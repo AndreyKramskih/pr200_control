@@ -12,6 +12,8 @@ import 'screens/connection_screen.dart';
 import 'screens/submenu_screens.dart';
 import 'screens/load_config_screen.dart';
 
+//test new connect//
+
 void main() {
   runApp(const MyApp());
 }
@@ -83,12 +85,19 @@ class _MyAppState extends State<MyApp> {
   void _autoConnect() async {
     if (_config == null) return;
     try {
-      await _modbusService.connect(
+      // ✅ Сохраняем результат подключения
+      bool success = await _modbusService.connect(
         _config!.modbusServer.ip,
         port: _config!.modbusServer.port,
         slaveId: _config!.modbusServer.slaveId,
         timeout: _config!.modbusServer.timeout,
       );
+
+      if (success) {
+        print('✅ Автоподключение успешно');
+      } else {
+        print('⚠️ Автоподключение не удалось: ${_modbusService.lastError}');
+      }
     } catch (e) {
       print('⚠️ Автоподключение не удалось: $e');
     }

@@ -1007,4 +1007,10 @@ class ModbusService extends ChangeNotifier {
       return result;
     }
   }
+
+  // ==================== ГЕТТЕРЫ ДЛЯ ДОСТУПА К ДАННЫМ ====================
+  String get ip => _ip;
+  int get port => _port;
+  int get slaveId => _slaveId;
+  int get timeout => _timeout;
 }
