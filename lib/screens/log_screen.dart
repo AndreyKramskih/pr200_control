@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../services/logger_service.dart';
 
 class LogScreen extends StatefulWidget {
@@ -164,9 +165,9 @@ class _LogScreenState extends State<LogScreen> {
           IconButton(
             icon: const Icon(Icons.share),
             onPressed: () {
-              _exportLogs(context);
+              _shareLogs(context);
             },
-            tooltip: 'Экспорт логов',
+            tooltip: 'Поделиться логами',
           ),
         ],
       ),
@@ -390,24 +391,39 @@ class _LogScreenState extends State<LogScreen> {
     );
   }
 
-  void _exportLogs(BuildContext context) async {
+  // ✅ МЕТОД "Поделиться" без неиспользуемых переменных
+  void _shareLogs(BuildContext context) async {
     try {
-      final file = await LoggerService().exportLogs();
-      if (file != null && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Логи сохранены: ${file.path}'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } else if (context.mounted) {
+      // Получаем текст логов
+      final logText = LoggerService().getLogsText();
+
+      if (logText.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Ошибка экспорта логов'),
-            backgroundColor: Colors.red,
+            content: Text('Нет логов для отправки'),
+            backgroundColor: Colors.orange,
           ),
         );
+        return;
       }
+
+      // Формируем полный текст с заголовком
+      final header =
+          '''
+═══════════════════════════════════════
+        ЛОГИ ПРИЛОЖЕНИЯ PR200
+        ${DateTime.now().toString().substring(0, 19)}
+═══════════════════════════════════════
+
+''';
+
+      final fullText = header + logText;
+
+      // Копируем в буфер обмена
+      await Clipboard.setData(ClipboardData(text: fullText));
+
+      // Показываем диалог с выбором действия
+      _showShareDialog(context, fullText);
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -415,5 +431,214 @@ class _LogScreenState extends State<LogScreen> {
         );
       }
     }
+  }
+
+  // ✅ ДИАЛОГ "Поделиться"
+  void _showShareDialog(BuildContext context, String text) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? Colors.grey[800] : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[400],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Поделиться логами',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Логи скопированы в буфер обмена',
+              style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildShareOption(
+                  icon: Icons.copy,
+                  label: 'Копировать',
+                  color: Colors.blue,
+                  onTap: () {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('📋 Логи скопированы в буфер обмена'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  },
+                ),
+                _buildShareOption(
+                  icon: Icons.email,
+                  label: 'Email',
+                  color: Colors.red,
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openEmail(context);
+                  },
+                ),
+                _buildShareOption(
+                  icon: Icons.message,
+                  label: 'SMS',
+                  color: Colors.green,
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openSMS(context);
+                  },
+                ),
+                _buildShareOption(
+                  icon: Icons.more_horiz,
+                  label: 'Ещё',
+                  color: Colors.purple,
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openShareIntent(context, text);
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ✅ ВИДЖЕТ ОПЦИИ ПОДЕЛИТЬСЯ
+  Widget _buildShareOption({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 28),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ✅ ОТКРЫТЬ EMAIL (упрощенный вариант без неиспользуемой переменной)
+  void _openEmail(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('📧 Логи скопированы. Вставьте их в письмо (Ctrl+V).'),
+        backgroundColor: Colors.blue,
+        duration: Duration(seconds: 3),
+      ),
+    );
+  }
+
+  // ✅ ОТКРЫТЬ SMS (упрощенный вариант без неиспользуемой переменной)
+  void _openSMS(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '📱 Логи скопированы. Вставьте их в SMS (${LoggerService().getLogsText().length} символов).',
+        ),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  // ✅ ОТКРЫТЬ СИСТЕМНЫЙ ДИАЛОГ
+  void _openShareIntent(BuildContext context, String text) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Поделиться логами'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Логи скопированы в буфер обмена.'),
+            const SizedBox(height: 8),
+            Text(
+              'Вы можете вставить их в любое приложение:',
+              style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green[300], size: 16),
+                const SizedBox(width: 8),
+                const Text('Telegram / WhatsApp / Viber'),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green[300], size: 16),
+                const SizedBox(width: 8),
+                const Text('Email / Gmail'),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green[300], size: 16),
+                const SizedBox(width: 8),
+                const Text('Google Диск / Облако'),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Закрыть'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Clipboard.setData(ClipboardData(text: text));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('📋 Логи скопированы! Вставьте куда нужно.'),
+                  backgroundColor: Colors.green,
+                ),
+              );
+            },
+            child: const Text('Копировать'),
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -6,6 +6,8 @@ import 'dart:async';
 import '../models/config_model.dart';
 import '../services/modbus_service.dart';
 
+import '../services/logger_service.dart';
+
 class ConnectionScreen extends StatefulWidget {
   const ConnectionScreen({super.key});
 
@@ -415,6 +417,8 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     final ip = _ipController.text.trim();
     final port = int.tryParse(_portController.text) ?? 502;
 
+    LoggerService().log('📡 Тест связи с $ip:$port');
+
     if (ip.isEmpty) {
       setState(() {
         _status = 'Введите IP адрес';
@@ -435,6 +439,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
         port,
         timeout: const Duration(seconds: 3),
       );
+
       socket.close();
 
       setState(() {
@@ -452,24 +457,34 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
           ),
         );
       }
+      LoggerService().log('✅ Порт $port доступен');
     } on SocketException catch (e) {
       setState(() {
         _status = '❌ Ошибка: ${e.message}';
         _statusColor = Colors.red;
         _isTesting = false;
       });
+      LoggerService().log('❌ Ошибка : ${e.message}', level: LogLevel.error);
     } on TimeoutException catch (_) {
       setState(() {
         _status = '❌ Таймаут: порт $port не отвечает';
         _statusColor = Colors.red;
         _isTesting = false;
       });
+      LoggerService().log(
+        '❌ Таймаут: порт $port не отвечает',
+        level: LogLevel.error,
+      );
     } catch (e) {
       setState(() {
         _status = '❌ Ошибка: ${e.toString().substring(0, 80)}';
         _statusColor = Colors.red;
         _isTesting = false;
       });
+      LoggerService().log(
+        '❌ Ошибка: ${e.toString().substring(0, 80)}',
+        level: LogLevel.error,
+      );
     }
   }
 
@@ -482,12 +497,14 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     final port = int.tryParse(_portController.text) ?? 502;
     final slaveId = int.tryParse(_slaveController.text) ?? 1;
     final timeout = int.tryParse(_timeoutController.text) ?? 3;
+    LoggerService().log('🔌 Подключение к $ip:$port (Slave ID: $slaveId)');
 
     if (ip.isEmpty) {
       setState(() {
         _status = 'Введите IP адрес';
         _statusColor = Colors.orange;
       });
+      LoggerService().log('❌ Введите IP адрес', level: LogLevel.warning);
       return;
     }
 
@@ -530,6 +547,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
         );
         // Не закрываем экран, чтобы пользователь видел статус
         // Navigator.pop(context);
+        LoggerService().log('✅ Подключение успешно');
       }
     } else {
       setState(() {
@@ -543,6 +561,10 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
             content: Text('Ошибка подключения: ${modbus.lastError}'),
             backgroundColor: Colors.red,
           ),
+        );
+        LoggerService().log(
+          '❌ Ошибка подключения: ${modbus.lastError}',
+          level: LogLevel.error,
         );
       }
     }

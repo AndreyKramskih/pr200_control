@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import '../models/config_model.dart';
 import '../models/modbus_data.dart';
 
+import '../services/logger_service.dart';
+
 class ModbusService extends ChangeNotifier {
   bool _connected = false;
   String _lastError = '';
@@ -29,7 +31,7 @@ class ModbusService extends ChangeNotifier {
     int slaveId = 1,
     int timeout = 3,
   }) async {
-    print('🔵 connect: попытка подключения к $ip:$port, slaveId=$slaveId');
+    LoggerService().log('🔵 Попытка подключения к $ip:$port, slaveId=$slaveId');
 
     try {
       _ip = ip;
@@ -45,21 +47,21 @@ class ModbusService extends ChangeNotifier {
       socket.close();
       _connected = true;
       _lastError = '';
-      print('✅ connect: подключение установлено');
+      LoggerService().log('✅ Подключение установлено');
 
       notifyListeners();
       return true;
     } catch (e) {
       _lastError = e.toString();
       _connected = false;
-      print('❌ connect: ошибка подключения: $e');
+      LoggerService().log('❌ Ошибка подключения: $e', level: LogLevel.error);
       notifyListeners();
       return false;
     }
   }
 
   void disconnect() {
-    print('🔵 disconnect: отключение от устройства');
+    LoggerService().log('🔌 Отключение от устройства');
     _connected = false;
     _registerCache.clear();
     _activeAlarms.clear();
@@ -267,7 +269,7 @@ class ModbusService extends ChangeNotifier {
   // ==================== ГРУППОВОЕ ЧТЕНИЕ ====================
 
   Future<Map<int, int>> readMultipleRegisters(List<int> addresses) async {
-    print('🔵 readMultipleRegisters: ${addresses.length} адресов');
+    LoggerService().log('📖 Чтение ${addresses.length} регистров');
 
     if (!_connected || addresses.isEmpty) {
       return {};
@@ -300,15 +302,18 @@ class ModbusService extends ChangeNotifier {
     if (currentGroup.isNotEmpty) {
       groups.add(currentGroup);
     }
-
-    print('🔵 Сформировано ${groups.length} групп для чтения');
+    LoggerService().log('✅ Сформировано ${groups.length} групп для чтения');
+    //print('🔵 Сформировано ${groups.length} групп для чтения');
 
     for (final group in groups) {
       final start = group.first;
       final end = group.last;
       final count = end - start + 1;
 
-      print('📖 Групповое чтение: адреса $start - $end (${count} регистров)');
+      LoggerService().log(
+        '📖 Групповое чтение: адреса $start - $end (${count} регистров)',
+      );
+      //print('📖 Групповое чтение: адреса $start - $end (${count} регистров)');
 
       final registers = await _readHoldingRegisters(start, count);
       if (registers != null) {
@@ -321,13 +326,18 @@ class ModbusService extends ChangeNotifier {
       }
     }
 
-    print('✅ readMultipleRegisters: получено ${result.length} значений');
+    LoggerService().log(
+      '✅ readMultipleRegisters: получено ${result.length} значений',
+    );
+    //print('✅ readMultipleRegisters: получено ${result.length} значений');
     return result;
   }
 
   Future<Map<int, double>> readMultipleFloats(List<int> addresses) async {
-    print('🔵 readMultipleFloats: ${addresses.length} адресов');
-    print('   Адреса для чтения: $addresses');
+    LoggerService().log('🔵 readMultipleFloats: ${addresses.length} адресов');
+    //print('🔵 readMultipleFloats: ${addresses.length} адресов');
+    LoggerService().log('🔵 Адреса для чтения: $addresses');
+    //print('   Адреса для чтения: $addresses');
 
     if (!_connected || addresses.isEmpty) {
       return {};
@@ -883,14 +893,21 @@ class ModbusService extends ChangeNotifier {
     int address,
     List<AlarmConfig> alarms,
   ) async {
-    print('🔵 readAlarms: адрес=$address, кол-во аварий=${alarms.length}');
+    LoggerService().log(
+      '🔴 Проверка аварий (адрес: $address, кол-во: ${alarms.length})',
+    );
+    //print('🔵 readAlarms: адрес=$address, кол-во аварий=${alarms.length}');
 
     final activeAlarms = <AlarmItem>[];
 
     try {
       final value = await readRegister(address);
       if (value == null) {
-        print('❌ readAlarms: не удалось прочитать регистр $address');
+        LoggerService().log(
+          '❌ readAlarms: не удалось прочитать регистр $address',
+          level: LogLevel.warning,
+        );
+        //print('❌ readAlarms: не удалось прочитать регистр $address');
         return [];
       }
 
@@ -904,7 +921,11 @@ class ModbusService extends ChangeNotifier {
         );
 
         if (isActive) {
-          print('🔴 Авария: ${alarm.name} (бит ${alarm.bit}) активна');
+          LoggerService().log(
+            '🔴 Обнаружено ${activeAlarms.length} активных аварий',
+            level: LogLevel.warning,
+          );
+          //print('🔴 Авария: ${alarm.name} (бит ${alarm.bit}) активна');
           activeAlarms.add(
             AlarmItem(
               name: alarm.name,
@@ -919,7 +940,8 @@ class ModbusService extends ChangeNotifier {
       return activeAlarms;
     } catch (e) {
       _lastError = e.toString();
-      print('❌ readAlarms ошибка: $e');
+      LoggerService().log('❌ readAlarms ошибка: $e', level: LogLevel.warning);
+      //print('❌ readAlarms ошибка: $e');
       return [];
     }
   }
@@ -931,7 +953,11 @@ class ModbusService extends ChangeNotifier {
 
     if (!_connected) {
       _lastError = 'Нет подключения к ПЛК';
-      print('❌ resetAlarms: нет подключения');
+      LoggerService().log(
+        '❌ resetAlarms: нет подключения',
+        level: LogLevel.error,
+      );
+      //print('❌ resetAlarms: нет подключения');
       return false;
     }
 
@@ -939,7 +965,11 @@ class ModbusService extends ChangeNotifier {
       // 1. Читаем текущее значение регистра 513
       final currentValue = await readRegister(513);
       if (currentValue == null) {
-        print('❌ resetAlarms: не удалось прочитать регистр 513');
+        LoggerService().log(
+          '❌ resetAlarms: не удалось прочитать регистр 513',
+          level: LogLevel.error,
+        );
+        //print('❌ resetAlarms: не удалось прочитать регистр 513');
         return false;
       }
 
@@ -982,9 +1012,11 @@ class ModbusService extends ChangeNotifier {
   }
 
   Future<bool> ping() async {
-    print('🔵 ping: проверка соединения');
+    LoggerService().log('🔵 ping: проверка соединения');
+    //print('🔵 ping: проверка соединения');
     final result = await _readHoldingRegisters(0, 1);
-    print('✅ ping: результат = ${result != null}');
+    LoggerService().log('✅ ping: результат = ${result != null}');
+    //print('✅ ping: результат = ${result != null}');
     return result != null;
   }
 

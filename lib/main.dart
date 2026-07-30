@@ -61,24 +61,28 @@ class _MyAppState extends State<MyApp> {
 
       if (activeConfigName != null) {
         LoggerService().log('📂 Загрузка активного конфига: $activeConfigName');
-        print('📂 Загрузка активного конфига: $activeConfigName');
+        //print('📂 Загрузка активного конфига: $activeConfigName');
         config = await ConfigManager.loadConfig(activeConfigName);
         if (config != null) {
           LoggerService().log('✅ Активный конфиг загружен: $activeConfigName');
-          print('✅ Активный конфиг загружен: $activeConfigName');
+          //print('✅ Активный конфиг загружен: $activeConfigName');
         } else {
           LoggerService().log(
             '⚠️ Активный конфиг не найден, загружаем стандартный',
             level: LogLevel.warning,
           );
-          print('⚠️ Активный конфиг не найден, загружаем стандартный');
+          LoggerService().log(
+            '⚠️ Активный конфиг не найден, загружаем стандартный',
+            level: LogLevel.warning,
+          );
+          //print('⚠️ Активный конфиг не найден, загружаем стандартный');
         }
       }
 
       // ✅ 2. ЕСЛИ АКТИВНОГО НЕТ — ЗАГРУЖАЕМ СТАНДАРТНЫЙ
       if (config == null) {
         LoggerService().log('📂 Загрузка стандартного конфига');
-        print('📂 Загрузка стандартного конфига');
+        //print('📂 Загрузка стандартного конфига');
         config = await configService.loadConfig();
       }
 
@@ -96,7 +100,7 @@ class _MyAppState extends State<MyApp> {
         '❌ Ошибка загрузки конфига: $e',
         level: LogLevel.error,
       );
-      print('❌ Ошибка загрузки конфига: $e');
+      //print('❌ Ошибка загрузки конфига: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -118,20 +122,20 @@ class _MyAppState extends State<MyApp> {
 
       if (success) {
         LoggerService().log('✅ Автоподключение успешно');
-        print('✅ Автоподключение успешно');
+        //print('✅ Автоподключение успешно');
       } else {
         LoggerService().log(
           '⚠️ Автоподключение не удалось: ${_modbusService.lastError}',
           level: LogLevel.warning,
         );
-        print('⚠️ Автоподключение не удалось: ${_modbusService.lastError}');
+        //print('⚠️ Автоподключение не удалось: ${_modbusService.lastError}');
       }
     } catch (e) {
       LoggerService().log(
         '⚠️ Автоподключение не удалось: $e',
         level: LogLevel.warning,
       );
-      print('⚠️ Автоподключение не удалось: $e');
+      //print('⚠️ Автоподключение не удалось: $e');
     }
   }
 

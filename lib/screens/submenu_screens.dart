@@ -10,6 +10,8 @@ import '../widgets/relay_widget.dart';
 import '../widgets/pump_widget.dart';
 import '../widgets/parameter_widget.dart';
 
+import '../services/logger_service.dart';
+
 class SubmenuScreen extends StatefulWidget {
   final String systemId;
   final String submenuId;
@@ -145,8 +147,8 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   Future<void> _loadRealtimeData(SubmenuConfig submenu) async {
     final modbus = Provider.of<ModbusService>(context, listen: false);
     if (!modbus.connected) return;
-
-    print('🔵 _loadRealtimeData: загрузка для ${submenu.name}');
+    LoggerService().log('🔵 _loadRealtimeData: загрузка для ${submenu.name}');
+    //print('🔵 _loadRealtimeData: загрузка для ${submenu.name}');
 
     final Map<String, dynamic> newData = {};
 
@@ -182,7 +184,10 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
         _realtimeData.clear();
         _realtimeData.addAll(newData);
       });
-      print('✅ _loadRealtimeData: загружено ${_realtimeData.length} значений');
+      LoggerService().log(
+        '✅ _loadRealtimeData: загружено ${_realtimeData.length} значений',
+      );
+      //print('✅ _loadRealtimeData: загружено ${_realtimeData.length} значений');
     }
 
     // ✅ ИСПРАВЛЕННОЕ ЧТЕНИЕ АВАРИЙ (ПО АДРЕСАМ)
@@ -291,9 +296,12 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       for (final entry in alarmsByAddress.entries) {
         final address = entry.key;
         final alarmsList = entry.value;
-        print(
+        LoggerService().log(
           '📖 Чтение аварий из регистра $address (${alarmsList.length} аварий)',
         );
+        //print(
+        //  '📖 Чтение аварий из регистра $address (${alarmsList.length} аварий)',
+        //);
         final result = await modbus.readAlarms(address, alarmsList);
         allActiveAlarms.addAll(result);
       }
@@ -319,8 +327,8 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
     if (!modbus.connected) return;
 
     if (submenu.items == null || submenu.items!.isEmpty) return;
-
-    print('🔵 _loadPumpModes: загрузка режимов насосов...');
+    LoggerService().log('🔵 _loadPumpModes: загрузка режимов насосов...');
+    //print('🔵 _loadPumpModes: загрузка режимов насосов...');
 
     final Map<String, dynamic> newModeData = {};
     bool hasChanges = false;
@@ -329,7 +337,10 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       if (item.modeAddress != null) {
         // ✅ Читаем по одному регистру для режимов
         final value = await modbus.readRegister(item.modeAddress!);
-        print('📊 Режим "${item.name}" (адрес ${item.modeAddress}) = $value');
+        LoggerService().log(
+          '📊 Режим "${item.name}" (адрес ${item.modeAddress}) = $value',
+        );
+        //print('📊 Режим "${item.name}" (адрес ${item.modeAddress}) = $value');
 
         if (value != null) {
           final key = item.modeAddress.toString();
@@ -340,15 +351,18 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
         }
       }
     }
-
-    print('📊 newModeData: $newModeData');
+    LoggerService().log('📊 newModeData: $newModeData');
+    //print('📊 newModeData: $newModeData');
 
     if (hasChanges && mounted) {
       setState(() {
         _modeData.clear();
         _modeData.addAll(newModeData);
       });
-      print('✅ _loadPumpModes: режимы обновлены, _modeData = $_modeData');
+      LoggerService().log(
+        '✅ _loadPumpModes: режимы обновлены, _modeData = $_modeData',
+      );
+      //print('✅ _loadPumpModes: режимы обновлены, _modeData = $_modeData');
     }
   }
 
@@ -357,8 +371,8 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   Future<void> _loadSettingsData(SubmenuConfig submenu) async {
     final modbus = Provider.of<ModbusService>(context, listen: false);
     if (!modbus.connected) return;
-
-    print('🔵 _loadSettingsData: загрузка настроек...');
+    LoggerService().log('🔵 _loadSettingsData: загрузка настроек...');
+    //print('🔵 _loadSettingsData: загрузка настроек...');
 
     final Map<String, dynamic> newData = {};
 
@@ -385,7 +399,8 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       for (final entry in intResults.entries) {
         final item = addressToItem[entry.key];
         if (item != null) {
-          print('✅ ${item.name} = ${entry.value}');
+          LoggerService().log('✅ ${item.name} = ${entry.value}');
+          //print('✅ ${item.name} = ${entry.value}');
           newData['${entry.key}'] = entry.value;
         }
       }
@@ -397,7 +412,8 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       for (final entry in floatResults.entries) {
         final item = addressToItem[entry.key];
         if (item != null) {
-          print('✅ ${item.name} = ${entry.value}');
+          LoggerService().log('✅ ${item.name} = ${entry.value}');
+          //print('✅ ${item.name} = ${entry.value}');
           newData['${entry.key}'] = entry.value;
         }
       }
@@ -407,9 +423,12 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
     for (final item in addressToItem.values) {
       final key = '${item.address}';
       if (!newData.containsKey(key)) {
-        print(
+        LoggerService().log(
           '⚠️ ${item.name} не прочитан, использую default: ${item.defaultValue}',
         );
+        //print(
+        //  '⚠️ ${item.name} не прочитан, использую default: ${item.defaultValue}',
+        //);
         newData[key] = item.defaultValue;
       }
     }
@@ -419,7 +438,10 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
         _settingsData.clear();
         _settingsData.addAll(newData);
       });
-      print('✅ _loadSettingsData: загружено ${_settingsData.length} значений');
+      LoggerService().log(
+        '✅ _loadSettingsData: загружено ${_settingsData.length} значений',
+      );
+      //print('✅ _loadSettingsData: загружено ${_settingsData.length} значений');
     }
   }
 
@@ -534,8 +556,10 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       _showSuccess('Нет измененных параметров для сохранения');
       return;
     }
-
-    print('🔵 Сохранение ${changedValues.length} измененных параметров...');
+    LoggerService().log(
+      '🔵 Сохранение ${changedValues.length} измененных параметров...)',
+    );
+    //print('🔵 Сохранение ${changedValues.length} измененных параметров...');
 
     // Показываем диалог подтверждения
     final confirm = await showDialog<bool>(
@@ -834,9 +858,12 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
           pumpId: pumpId, // ✅ Передаем уникальный ID
           key: ValueKey('pump_${item.address}_${modeValue ?? 0}_$index'),
           onModeChanged: () {
-            print(
+            LoggerService().log(
               '🔵 onModeChanged вызван для ${item.name} (адрес ${item.address})',
             );
+            //print(
+            // '🔵 onModeChanged вызван для ${item.name} (адрес ${item.address})',
+            //);
             if (mounted) {
               // ✅ Перезагружаем только режимы насосов
               _loadPumpModes(submenu);
@@ -1441,9 +1468,12 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
                       context,
                       listen: false,
                     );
-                    print(
+                    LoggerService().log(
                       '🔵 Сохранение: ${item.name} = $newValue в адрес ${item.address}',
                     );
+                    //print(
+                    // '🔵 Сохранение: ${item.name} = $newValue в адрес ${item.address}',
+                    //);
 
                     final success = await modbus.writeRegister(
                       item.address,
