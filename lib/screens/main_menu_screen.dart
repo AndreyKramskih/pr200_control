@@ -2,9 +2,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/config_model.dart';
-import '../providers/theme_provider.dart'; // Добавляем
+import '../providers/theme_provider.dart';
 import '../services/modbus_service.dart';
 import '../screens/load_config_screen.dart';
+// ✅ Добавляем импорт для экрана логов
+import '../screens/log_screen.dart';
 
 class MainMenuScreen extends StatefulWidget {
   const MainMenuScreen({super.key});
@@ -319,17 +321,28 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                     ),
                   ),
 
-                  // Информация о версии
+                  // ✅ Информация о версии с долгим нажатием
                   Padding(
                     padding: const EdgeInsets.only(top: 20, bottom: 10),
                     child: Center(
-                      child: Text(
-                        'PR200 v1.0.0',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: themeProvider.isDarkMode
-                              ? Colors.grey[600]
-                              : Colors.grey[400],
+                      child: GestureDetector(
+                        onLongPress: () {
+                          // Переход на экран логов
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const LogScreen(),
+                            ),
+                          );
+                        },
+                        child: Text(
+                          'PR200 v1.0.2',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: themeProvider.isDarkMode
+                                ? Colors.grey[600]
+                                : Colors.grey[400],
+                          ),
                         ),
                       ),
                     ),
