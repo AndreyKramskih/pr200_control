@@ -1,7 +1,10 @@
+// lib/screens/connection_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../services/modbus_service.dart';
+import 'dart:io';
+import 'dart:async';
 import '../models/config_model.dart';
+import '../services/modbus_service.dart';
 
 class ConnectionScreen extends StatefulWidget {
   const ConnectionScreen({super.key});
@@ -11,459 +14,537 @@ class ConnectionScreen extends StatefulWidget {
 }
 
 class _ConnectionScreenState extends State<ConnectionScreen> {
-  // Контроллеры для полей ввода
-  late TextEditingController ipController;
-  late TextEditingController portController;
-  late TextEditingController slaveIdController;
-  late TextEditingController timeoutController;
+  final TextEditingController _ipController = TextEditingController();
+  final TextEditingController _portController = TextEditingController();
+  final TextEditingController _slaveController = TextEditingController();
+  final TextEditingController _timeoutController = TextEditingController();
 
-  // Флаги загрузки для кнопок
+  String _status = '';
+  Color _statusColor = Colors.grey;
+  bool _isTesting = false;
   bool _isConnecting = false;
-  bool _isPinging = false;
 
   @override
   void initState() {
     super.initState();
-
-    // ✅ Получаем конфиг из провайдера
-    final config = Provider.of<ConfigModel>(context, listen: false);
-
-    // ✅ Инициализируем контроллеры с данными из конфига
-    ipController = TextEditingController(text: config.modbusServer.ip);
-    portController = TextEditingController(
-      text: config.modbusServer.port.toString(),
-    );
-    slaveIdController = TextEditingController(
-      text: config.modbusServer.slaveId.toString(),
-    );
-    timeoutController = TextEditingController(
-      text: config.modbusServer.timeout.toString(),
-    );
+    _loadConfig();
   }
 
   @override
   void dispose() {
-    ipController.dispose();
-    portController.dispose();
-    slaveIdController.dispose();
-    timeoutController.dispose();
+    _ipController.dispose();
+    _portController.dispose();
+    _slaveController.dispose();
+    _timeoutController.dispose();
     super.dispose();
+  }
+
+  void _loadConfig() {
+    final config = Provider.of<ConfigModel>(context, listen: false);
+    _ipController.text = config.modbusServer.ip;
+    _portController.text = config.modbusServer.port.toString();
+    _slaveController.text = config.modbusServer.slaveId.toString();
+    _timeoutController.text = config.modbusServer.timeout.toString();
   }
 
   @override
   Widget build(BuildContext context) {
-    // ✅ Получаем сервисы из провайдера
-    final modbusService = Provider.of<ModbusService>(context);
-    final config = Provider.of<ConfigModel>(context);
+    final modbus = Provider.of<ModbusService>(context);
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Настройки подключения'),
-        centerTitle: true,
-        backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
-        actions: [
-          // Кнопка "Сохранить в конфиг"
-          IconButton(
-            icon: const Icon(Icons.save),
-            tooltip: 'Сохранить настройки в конфигурацию',
-            onPressed: () {
-              _saveSettingsToConfig(context, config);
-            },
-          ),
-        ],
+        title: const Text('Подключение к оборудованию'),
+        backgroundColor: Colors.blue[800],
+        foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ========== ИНДИКАТОР СТАТУСА ==========
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: modbusService.connected
-                    ? Colors.green[50]
-                    : Colors.grey[200],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: modbusService.connected
-                      ? Colors.green
-                      : Colors.grey[400]!,
-                  width: 1,
+      body: Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: isDark
+                ? [Colors.grey[900]!, Colors.grey[800]!]
+                : [Colors.grey[50]!, Colors.grey[200]!],
+          ),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              // Иконка
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.blue[700],
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.blue.withOpacity(0.3),
+                      blurRadius: 20,
+                      spreadRadius: 5,
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.settings_ethernet,
+                  size: 48,
+                  color: Colors.white,
                 ),
               ),
-              child: Row(
-                children: [
-                  Icon(
-                    modbusService.connected
-                        ? Icons.check_circle
-                        : Icons.error_outline,
-                    color: modbusService.connected
-                        ? Colors.green
-                        : Colors.grey[600],
+              const SizedBox(height: 24),
+
+              // Заголовок
+              Text(
+                'Настройки Modbus TCP',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Введите параметры подключения к устройству',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isDark ? Colors.grey[400] : Colors.black54,
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Форма
+              Card(
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                color: isDark ? Colors.grey[850] : Colors.white,
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    children: [
+                      _buildTextField(
+                        controller: _ipController,
+                        label: 'IP адрес',
+                        icon: Icons.network_wifi,
+                        hint: '192.168.1.100',
+                      ),
+                      const SizedBox(height: 16),
+                      _buildTextField(
+                        controller: _portController,
+                        label: 'Порт',
+                        icon: Icons.settings_input_component,
+                        hint: '502',
+                        keyboardType: TextInputType.number,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildTextField(
+                        controller: _slaveController,
+                        label: 'Slave ID',
+                        icon: Icons.numbers,
+                        hint: '1',
+                        keyboardType: TextInputType.number,
+                      ),
+                      const SizedBox(height: 16),
+                      _buildTextField(
+                        controller: _timeoutController,
+                        label: 'Таймаут (сек)',
+                        icon: Icons.timer,
+                        hint: '3',
+                        keyboardType: TextInputType.number,
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          modbusService.connected
-                              ? '✅ ПОДКЛЮЧЕНО'
-                              : '❌ НЕТ ПОДКЛЮЧЕНИЯ',
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Статус
+              if (_status.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 12,
+                    horizontal: 16,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _statusColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: _statusColor.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _statusColor,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _status,
                           style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: modbusService.connected
-                                ? Colors.green[800]
-                                : Colors.grey[700],
+                            color: _statusColor,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
-                        if (modbusService.connected) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            'IP: ${modbusService.ip}:${modbusService.port} | Slave ID: ${modbusService.slaveId}',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey[700],
-                            ),
-                          ),
-                        ],
-                        if (!modbusService.connected &&
-                            modbusService.lastError.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            'Ошибка: ${modbusService.lastError}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.red[700],
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  // Кнопка "Отключиться"
-                  if (modbusService.connected)
-                    IconButton(
-                      icon: const Icon(Icons.link_off, color: Colors.red),
-                      onPressed: () {
-                        modbusService.disconnect();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('🔌 Отключено от устройства'),
-                            backgroundColor: Colors.grey,
-                          ),
-                        );
-                      },
-                      tooltip: 'Отключиться',
-                    ),
-                ],
-              ),
-            ),
+                ),
 
-            const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
-            // ========== ИНФОРМАЦИЯ О КОНФИГЕ ==========
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue[50],
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue[200]!),
-              ),
-              child: Row(
+              // Кнопки
+              Row(
                 children: [
-                  Icon(Icons.info_outline, color: Colors.blue[700]),
-                  const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      // ✅ Используем connection.name из ConfigModel
-                      'Настройки загружены из конфигурации: ${config.connection.name}',
-                      style: TextStyle(fontSize: 14, color: Colors.blue[800]),
+                    child: ElevatedButton.icon(
+                      onPressed: _isTesting || _isConnecting
+                          ? null
+                          : () => _testConnection(context),
+                      icon: _isTesting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.network_check),
+                      label: Text(_isTesting ? 'Проверка...' : 'Тест связи'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        disabledBackgroundColor: Colors.blue[300],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _isTesting || _isConnecting
+                          ? null
+                          : () => _connect(context),
+                      icon: _isConnecting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.check_circle),
+                      label: Text(
+                        _isConnecting ? 'Подключение...' : 'Подключиться',
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        disabledBackgroundColor: Colors.green[300],
+                      ),
                     ),
                   ),
                 ],
               ),
-            ),
 
-            const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
-            // ========== ПОЛЯ ВВОДА ==========
-            const Text(
-              'Параметры подключения',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 16),
-
-            // IP-адрес
-            TextField(
-              controller: ipController,
-              decoration: const InputDecoration(
-                labelText: 'IP-адрес',
-                hintText: 'Например: 192.168.1.100',
-                prefixIcon: Icon(Icons.dns),
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // Порт
-            TextField(
-              controller: portController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Порт',
-                hintText: 'По умолчанию: 502',
-                prefixIcon: Icon(Icons.settings_ethernet),
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // Slave ID
-            TextField(
-              controller: slaveIdController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Slave ID',
-                hintText: 'По умолчанию: 1',
-                prefixIcon: Icon(Icons.numbers),
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // Таймаут
-            TextField(
-              controller: timeoutController,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                labelText: 'Таймаут (сек)',
-                hintText: 'По умолчанию: 3',
-                prefixIcon: Icon(Icons.timer),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // ========== КНОПКИ ==========
-            Row(
-              children: [
-                // Кнопка "ПОДКЛЮЧИТЬСЯ"
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _isConnecting || _isPinging
-                        ? null
-                        : () async {
-                            // Показываем загрузку
-                            setState(() => _isConnecting = true);
-
-                            // Пытаемся подключиться
-                            final ip = ipController.text;
-                            final port =
-                                int.tryParse(portController.text) ?? 502;
-                            final slaveId =
-                                int.tryParse(slaveIdController.text) ?? 1;
-                            final timeout =
-                                int.tryParse(timeoutController.text) ?? 3;
-
-                            final success = await modbusService.connect(
-                              ip,
-                              port: port,
-                              slaveId: slaveId,
-                              timeout: timeout,
-                            );
-
-                            setState(() => _isConnecting = false);
-
-                            // Показываем результат
-                            if (success) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('✅ Подключено успешно'),
-                                  backgroundColor: Colors.green,
-                                  duration: Duration(seconds: 2),
-                                ),
-                              );
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    '❌ Ошибка: ${modbusService.lastError}',
-                                  ),
-                                  backgroundColor: Colors.red,
-                                  duration: const Duration(seconds: 3),
-                                ),
-                              );
-                            }
-                          },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: modbusService.connected
-                          ? Colors.orange
-                          : Colors.blue,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+              // ✅ ИСПРАВЛЕНО: Состояние подключения теперь показывает реальный статус
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: modbus.connected
+                      ? (isDark ? Colors.green[900] : Colors.green[50])
+                      : (isDark ? Colors.grey[800] : Colors.grey[50]),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: modbus.connected ? Colors.green : Colors.grey,
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: modbus.connected ? Colors.green : Colors.red,
                       ),
                     ),
-                    icon: _isConnecting
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Icon(
-                            modbusService.connected
-                                ? Icons.refresh
-                                : Icons.link,
-                          ),
-                    label: Text(
-                      _isConnecting
-                          ? 'ПОДКЛЮЧЕНИЕ...'
-                          : (modbusService.connected
-                                ? 'ПЕРЕПОДКЛЮЧИТЬСЯ'
-                                : 'ПОДКЛЮЧИТЬСЯ'),
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(width: 12),
-
-                // Кнопка "ПРОВЕРКА СВЯЗИ"
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _isConnecting || _isPinging
-                        ? null
-                        : () async {
-                            // Проверяем, есть ли подключение
-                            if (!modbusService.connected) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    '⚠️ Сначала подключитесь к устройству',
-                                  ),
-                                  backgroundColor: Colors.orange,
-                                  duration: Duration(seconds: 2),
-                                ),
-                              );
-                              return;
-                            }
-
-                            // Показываем загрузку
-                            setState(() => _isPinging = true);
-
-                            // Выполняем пинг
-                            final isAlive = await modbusService.ping();
-
-                            setState(() => _isPinging = false);
-
-                            // Показываем результат
-                            if (isAlive) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    '✅ Устройство отвечает! Связь есть.',
-                                  ),
-                                  backgroundColor: Colors.green,
-                                  duration: Duration(seconds: 2),
-                                ),
-                              );
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    '❌ Устройство не отвечает: ${modbusService.lastError}',
-                                  ),
-                                  backgroundColor: Colors.red,
-                                  duration: const Duration(seconds: 3),
-                                ),
-                              );
-                            }
-                          },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.purple,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                    const SizedBox(width: 12),
+                    Text(
+                      modbus.connected ? 'Подключено' : 'Отключено',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: modbus.connected ? Colors.green : Colors.red,
                       ),
                     ),
-                    icon: _isPinging
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(Icons.network_check),
-                    label: Text(
-                      _isPinging ? 'ПРОВЕРКА...' : 'ПРОВЕРКА СВЯЗИ',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 16),
-
-            // ========== КНОПКА СОХРАНИТЬ В КОНФИГ ==========
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  _saveSettingsToConfig(context, config);
-                },
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.blue,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  side: const BorderSide(color: Colors.blue),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                icon: const Icon(Icons.save),
-                label: const Text(
-                  'СОХРАНИТЬ В КОНФИГУРАЦИЮ',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+                    if (modbus.connected && modbus.lastError.isNotEmpty) ...[
+                      const SizedBox(width: 16),
+                      Text(
+                        '(${modbus.lastError})',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? Colors.grey[400] : Colors.grey,
+                        ),
+                      ),
+                    ],
+                    // ✅ ДОБАВЛЕНО: Показываем IP при подключении
+                    if (modbus.connected) ...[
+                      const SizedBox(width: 16),
+                      Text(
+                        '${modbus.ip}:${modbus.port}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? Colors.grey[400] : Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-            ),
-          ],
+
+              const SizedBox(height: 16),
+
+              // Кнопка отключения
+              if (modbus.connected)
+                TextButton.icon(
+                  onPressed: () {
+                    modbus.disconnect();
+                    setState(() {
+                      _status = 'Отключено';
+                      _statusColor = Colors.grey;
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Отключено от устройства'),
+                        backgroundColor: Colors.orange,
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.link_off, color: Colors.red),
+                  label: const Text(
+                    'Отключиться',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  // ========== МЕТОД СОХРАНЕНИЯ НАСТРОЕК В КОНФИГ ==========
-  void _saveSettingsToConfig(BuildContext context, ConfigModel config) {
-    // Получаем значения из полей
-    final ip = ipController.text;
-    final port = int.tryParse(portController.text) ?? 502;
-    final slaveId = int.tryParse(slaveIdController.text) ?? 1;
-    final timeout = int.tryParse(timeoutController.text) ?? 3;
+  Widget _buildTextField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+    required String hint,
+    TextInputType keyboardType = TextInputType.text,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
-    // Обновляем конфиг
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      style: TextStyle(
+        color: isDark ? Colors.white : Colors.black87,
+        fontSize: 18,
+      ),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: TextStyle(color: isDark ? Colors.white70 : Colors.black87),
+        hintText: hint,
+        hintStyle: TextStyle(
+          color: isDark ? Colors.grey[500] : Colors.grey[600],
+        ),
+        prefixIcon: Icon(
+          icon,
+          color: isDark ? Colors.white70 : Colors.blue[700],
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: isDark ? Colors.grey[600]! : Colors.grey[300]!,
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(
+            color: isDark ? Colors.grey[600]! : Colors.grey[300]!,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.blue, width: 2),
+        ),
+        filled: true,
+        fillColor: isDark ? Colors.grey[800] : Colors.white,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _testConnection(BuildContext context) async {
+    final ip = _ipController.text.trim();
+    final port = int.tryParse(_portController.text) ?? 502;
+
+    if (ip.isEmpty) {
+      setState(() {
+        _status = 'Введите IP адрес';
+        _statusColor = Colors.orange;
+      });
+      return;
+    }
+
+    setState(() {
+      _status = 'Проверка подключения...';
+      _statusColor = Colors.orange;
+      _isTesting = true;
+    });
+
+    try {
+      final socket = await Socket.connect(
+        ip,
+        port,
+        timeout: const Duration(seconds: 3),
+      );
+      socket.close();
+
+      setState(() {
+        _status = '✅ Порт $port доступен на $ip';
+        _statusColor = Colors.green;
+        _isTesting = false;
+      });
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Порт $port доступен на $ip'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } on SocketException catch (e) {
+      setState(() {
+        _status = '❌ Ошибка: ${e.message}';
+        _statusColor = Colors.red;
+        _isTesting = false;
+      });
+    } on TimeoutException catch (_) {
+      setState(() {
+        _status = '❌ Таймаут: порт $port не отвечает';
+        _statusColor = Colors.red;
+        _isTesting = false;
+      });
+    } catch (e) {
+      setState(() {
+        _status = '❌ Ошибка: ${e.toString().substring(0, 80)}';
+        _statusColor = Colors.red;
+        _isTesting = false;
+      });
+    }
+  }
+
+  // ✅ ИСПРАВЛЕНО: Метод _connect теперь использует реальный ModbusService
+  Future<void> _connect(BuildContext context) async {
+    final modbus = Provider.of<ModbusService>(context, listen: false);
+    final config = Provider.of<ConfigModel>(context, listen: false);
+
+    final ip = _ipController.text.trim();
+    final port = int.tryParse(_portController.text) ?? 502;
+    final slaveId = int.tryParse(_slaveController.text) ?? 1;
+    final timeout = int.tryParse(_timeoutController.text) ?? 3;
+
+    if (ip.isEmpty) {
+      setState(() {
+        _status = 'Введите IP адрес';
+        _statusColor = Colors.orange;
+      });
+      return;
+    }
+
+    setState(() {
+      _status = 'Подключение...';
+      _statusColor = Colors.orange;
+      _isConnecting = true;
+    });
+
+    // Сохраняем настройки в конфиг
     config.modbusServer.ip = ip;
     config.modbusServer.port = port;
     config.modbusServer.slaveId = slaveId;
     config.modbusServer.timeout = timeout;
 
-    // Показываем уведомление
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('✅ Настройки сохранены в конфигурацию'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 2),
-      ),
+    // ✅ Используем реальный метод подключения из ModbusService
+    final success = await modbus.connect(
+      ip,
+      port: port,
+      slaveId: slaveId,
+      timeout: timeout,
     );
 
-    // Опционально: можно вызвать метод сохранения в файл
-    // Например: await ConfigManager.saveConfig(config);
+    setState(() {
+      _isConnecting = false;
+    });
+
+    if (success) {
+      setState(() {
+        _status = '✅ Подключено к $ip:$port';
+        _statusColor = Colors.green;
+      });
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Подключение успешно!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // Не закрываем экран, чтобы пользователь видел статус
+        // Navigator.pop(context);
+      }
+    } else {
+      setState(() {
+        _status = '❌ Ошибка: ${modbus.lastError}';
+        _statusColor = Colors.red;
+      });
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Ошибка подключения: ${modbus.lastError}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
