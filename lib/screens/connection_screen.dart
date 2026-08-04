@@ -5,7 +5,7 @@ import 'dart:io';
 import 'dart:async';
 import '../models/config_model.dart';
 import '../services/modbus_service.dart';
-
+import '../services/config_service.dart'; // ✅ ДОБАВЛЯЕМ
 import '../services/logger_service.dart';
 
 class ConnectionScreen extends StatefulWidget {
@@ -25,6 +25,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
   Color _statusColor = Colors.grey;
   bool _isTesting = false;
   bool _isConnecting = false;
+  bool _isSaving = false; // ✅ ДОБАВЛЯЕМ
 
   @override
   void initState() {
@@ -49,6 +50,85 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     _timeoutController.text = config.modbusServer.timeout.toString();
   }
 
+  // ✅ НОВЫЙ МЕТОД: Сохранение настроек в конфигурацию
+  Future<void> _saveToConfig(BuildContext context) async {
+    final config = Provider.of<ConfigModel>(context, listen: false);
+    final ip = _ipController.text.trim();
+    final port = int.tryParse(_portController.text) ?? 502;
+    final slaveId = int.tryParse(_slaveController.text) ?? 1;
+    final timeout = int.tryParse(_timeoutController.text) ?? 3;
+
+    if (ip.isEmpty) {
+      setState(() {
+        _status = 'Введите IP адрес';
+        _statusColor = Colors.orange;
+      });
+      LoggerService().log(
+        '⚠️ Сохранение: IP адрес не введен',
+        level: LogLevel.warning,
+      );
+      return;
+    }
+
+    setState(() {
+      _status = 'Сохранение...';
+      _statusColor = Colors.orange;
+      _isSaving = true;
+    });
+
+    LoggerService().log(
+      '💾 Сохранение настроек в конфигурацию: $ip:$port, Slave ID: $slaveId',
+    );
+
+    try {
+      // Обновляем конфиг
+      config.modbusServer.ip = ip;
+      config.modbusServer.port = port;
+      config.modbusServer.slaveId = slaveId;
+      config.modbusServer.timeout = timeout;
+
+      // Сохраняем в файл
+      final configService = ConfigService();
+      await configService.saveConfig(config);
+
+      setState(() {
+        _status = '✅ Настройки сохранены в конфигурацию';
+        _statusColor = Colors.green;
+        _isSaving = false;
+      });
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Настройки сохранены в конфигурацию'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+      LoggerService().log('✅ Настройки сохранены в конфигурацию');
+    } catch (e) {
+      setState(() {
+        _status = '❌ Ошибка сохранения: $e';
+        _statusColor = Colors.red;
+        _isSaving = false;
+      });
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Ошибка сохранения: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      LoggerService().log(
+        '❌ Ошибка сохранения настроек: $e',
+        level: LogLevel.error,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final modbus = Provider.of<ModbusService>(context);
@@ -64,6 +144,14 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.pop(context),
         ),
+        // ✅ Кнопка сохранения в AppBar
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.save),
+            onPressed: _isSaving ? null : () => _saveToConfig(context),
+            tooltip: 'Сохранить настройки в конфигурацию',
+          ),
+        ],
       ),
       body: Container(
         padding: const EdgeInsets.all(24),
@@ -211,7 +299,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: _isTesting || _isConnecting
+                      onPressed: _isTesting || _isConnecting || _isSaving
                           ? null
                           : () => _testConnection(context),
                       icon: _isTesting
@@ -239,7 +327,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                   const SizedBox(width: 16),
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: _isTesting || _isConnecting
+                      onPressed: _isTesting || _isConnecting || _isSaving
                           ? null
                           : () => _connect(context),
                       icon: _isConnecting
@@ -271,7 +359,41 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
 
               const SizedBox(height: 16),
 
-              // ✅ ИСПРАВЛЕНО: Состояние подключения теперь показывает реальный статус
+              // ✅ НОВАЯ КНОПКА: Сохранить в конфигурацию
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _isTesting || _isConnecting || _isSaving
+                      ? null
+                      : () => _saveToConfig(context),
+                  icon: _isSaving
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.save),
+                  label: Text(
+                    _isSaving ? 'Сохранение...' : 'Сохранить в конфигурацию',
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    disabledBackgroundColor: Colors.orange[300],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Состояние подключения
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -313,7 +435,6 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                         ),
                       ),
                     ],
-                    // ✅ ДОБАВЛЕНО: Показываем IP при подключении
                     if (modbus.connected) ...[
                       const SizedBox(width: 16),
                       Text(
@@ -345,6 +466,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                         backgroundColor: Colors.orange,
                       ),
                     );
+                    LoggerService().log('🔌 Отключено от устройства');
                   },
                   icon: const Icon(Icons.link_off, color: Colors.red),
                   label: const Text(
@@ -488,7 +610,6 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     }
   }
 
-  // ✅ ИСПРАВЛЕНО: Метод _connect теперь использует реальный ModbusService
   Future<void> _connect(BuildContext context) async {
     final modbus = Provider.of<ModbusService>(context, listen: false);
     final config = Provider.of<ConfigModel>(context, listen: false);
@@ -520,7 +641,6 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     config.modbusServer.slaveId = slaveId;
     config.modbusServer.timeout = timeout;
 
-    // ✅ Используем реальный метод подключения из ModbusService
     final success = await modbus.connect(
       ip,
       port: port,
@@ -545,8 +665,6 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        // Не закрываем экран, чтобы пользователь видел статус
-        // Navigator.pop(context);
         LoggerService().log('✅ Подключение успешно');
       }
     } else {
