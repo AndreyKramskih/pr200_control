@@ -7,6 +7,8 @@ import '../services/modbus_service.dart';
 import '../screens/load_config_screen.dart';
 // ✅ Добавляем импорт для экрана логов
 import '../screens/log_screen.dart';
+// ✅ Добавляем импорт для экрана трендов
+import '../screens/trends_screen.dart';
 
 import '../services/report_service.dart';
 
@@ -231,11 +233,36 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('PR200 Управление'),
+        title: const Text('PR200'),
         backgroundColor: Colors.blue[800],
         foregroundColor: Colors.white,
         elevation: 4,
         actions: [
+          // ===== ВЕРСИЯ С ДОЛГИМ НАЖАТИЕМ (В AppBar) =====
+          GestureDetector(
+            onLongPress: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const LogScreen()),
+              );
+            },
+            child: Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'v1.0.5',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
           // Кнопка переключения темы
           IconButton(
             icon: Icon(
@@ -482,7 +509,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                       },
                     ),
                   ),
-                  // ✅ ========== НОВАЯ КНОПКА "СОЗДАТЬ ОТЧЕТ" ==========
+
+                  // ✅ ========== КНОПКА "СОЗДАТЬ ОТЧЕТ" ==========
                   Card(
                     elevation: 4,
                     margin: const EdgeInsets.only(bottom: 12),
@@ -526,36 +554,89 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                           ? () {
                               _createReport(context);
                             }
-                          : null, // Если нет подключения - кнопка неактивна
+                          : null,
+                    ),
+                  ),
+
+                  // ✅ ========== НОВАЯ КНОПКА "ТРЕНДЫ" ==========
+                  Card(
+                    elevation: 4,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      leading: const Text('📊', style: TextStyle(fontSize: 32)),
+                      title: Text(
+                        'Тренды',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: themeProvider.isDarkMode
+                              ? Colors.white
+                              : Colors.black87,
+                        ),
+                      ),
+                      subtitle: Text(
+                        modbus.connected
+                            ? 'Графики датчиков'
+                            : 'Требуется подключение',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: modbus.connected
+                              ? Colors.green
+                              : Colors.orange,
+                        ),
+                      ),
+                      trailing: Icon(
+                        Icons.show_chart,
+                        color: themeProvider.isDarkMode
+                            ? Colors.grey[400]
+                            : Colors.purple,
+                      ),
+                      onTap: modbus.connected
+                          ? () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const TrendsScreen(),
+                                ),
+                              );
+                            }
+                          : null,
                     ),
                   ),
 
                   // ✅ Информация о версии с долгим нажатием
-                  Padding(
-                    padding: const EdgeInsets.only(top: 20, bottom: 10),
-                    child: Center(
-                      child: GestureDetector(
-                        onLongPress: () {
-                          // Переход на экран логов
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const LogScreen(),
-                            ),
-                          );
-                        },
-                        child: Text(
-                          'PR200 v1.0.4',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: themeProvider.isDarkMode
-                                ? Colors.grey[600]
-                                : Colors.grey[400],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                  // Padding(
+                  //   padding: const EdgeInsets.only(top: 20, bottom: 10),
+                  //   child: Center(
+                  //     child: GestureDetector(
+                  //       onLongPress: () {
+                  //         // Переход на экран логов
+                  //         Navigator.push(
+                  //           context,
+                  //           MaterialPageRoute(
+                  //             builder: (context) => const LogScreen(),
+                  //           ),
+                  //         );
+                  //       },
+                  //       child: Text(
+                  //         'PR200 v1.0.4',
+                  //         style: TextStyle(
+                  //           fontSize: 12,
+                  //           color: themeProvider.isDarkMode
+                  //               ? Colors.grey[600]
+                  //               : Colors.grey[400],
+                  //         ),
+                  //       ),
+                  //     ),
+                  //   ),
+                  // ),
                 ],
               ),
             ),
