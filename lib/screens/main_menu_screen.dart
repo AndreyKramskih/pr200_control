@@ -545,7 +545,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                           );
                         },
                         child: Text(
-                          'PR200 v1.0.2',
+                          'PR200 v1.0.3',
                           style: TextStyle(
                             fontSize: 12,
                             color: themeProvider.isDarkMode
