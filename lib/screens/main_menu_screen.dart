@@ -8,6 +8,8 @@ import '../screens/load_config_screen.dart';
 // ✅ Добавляем импорт для экрана логов
 import '../screens/log_screen.dart';
 
+import '../services/report_service.dart';
+
 class MainMenuScreen extends StatefulWidget {
   const MainMenuScreen({super.key});
 
@@ -46,6 +48,166 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
         _connectionInfo = '';
       }
     });
+  }
+
+  Future<void> _createReport(BuildContext context) async {
+    try {
+      final config = Provider.of<ConfigModel>(context, listen: false);
+      final modbus = Provider.of<ModbusService>(context, listen: false);
+
+      if (!modbus.connected) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Нет подключения к устройству'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Сбор данных...'),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // ✅ Изменяем структуру: теперь храним имя системы и параметры
+      final systemData = <String, Map<String, dynamic>>{};
+      final systemNames = <String, String>{}; // ✅ Храним названия систем
+
+      print('📊 Начинаем сбор данных...');
+      print('📋 Систем в конфиге: ${config.systems.length}');
+
+      for (var entry in config.systems.entries) {
+        final systemId = entry.key;
+        final system = entry.value;
+        final data = <String, dynamic>{};
+
+        // ✅ Сохраняем название системы
+        systemNames[systemId] = system.name;
+
+        print('📁 Система: $systemId (${system.name})');
+
+        for (var submenuEntry in system.submenus.entries) {
+          final submenu = submenuEntry.value;
+
+          if (submenu.items != null) {
+            for (var item in submenu.items!) {
+              try {
+                final value = await modbus.readParameterValue(item);
+
+                data[item.name] = {
+                  'value': value ?? '--',
+                  'unit': item.unit ?? '',
+                  'bit': item.bit,
+                  'states': item.states,
+                };
+
+                print('  ✅ ${item.name} = $value');
+              } catch (e) {
+                print('  ❌ Ошибка чтения ${item.name}: $e');
+                data[item.name] = {
+                  'value': 'Ошибка',
+                  'unit': item.unit ?? '',
+                  'bit': item.bit,
+                  'states': item.states,
+                };
+              }
+            }
+          }
+
+          if (submenu.groups != null) {
+            for (var group in submenu.groups!) {
+              for (var item in group.items) {
+                try {
+                  final value = await modbus.readParameterValue(item);
+
+                  data[item.name] = {
+                    'value': value ?? '--',
+                    'unit': item.unit ?? '',
+                    'bit': item.bit,
+                    'states': item.states,
+                  };
+
+                  print('  ✅ ${item.name} = $value');
+                } catch (e) {
+                  print('  ❌ Ошибка чтения ${item.name}: $e');
+                  data[item.name] = {
+                    'value': 'Ошибка',
+                    'unit': item.unit ?? '',
+                    'bit': item.bit,
+                    'states': item.states,
+                  };
+                }
+              }
+            }
+          }
+        }
+
+        systemData[systemId] = data;
+        print('✅ Система $systemId: ${data.length} параметров');
+      }
+
+      Navigator.pop(context);
+
+      print('📊 Всего систем с данными: ${systemData.length}');
+
+      // ✅ Выводим названия систем
+      for (var entry in systemData.entries) {
+        final systemId = entry.key;
+        final systemName = systemNames[systemId] ?? systemId;
+        print(
+          '📊 Система $systemName ($systemId): ${entry.value.length} параметров',
+        );
+      }
+
+      if (systemData.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⚠️ Нет данных для отчета'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      final reportService = ReportService();
+      await reportService.generateAndShareReport(
+        projectName: config.projectName,
+        ip: config.modbusServer.ip,
+        port: config.modbusServer.port,
+        slaveId: config.modbusServer.slaveId,
+        systemData: systemData,
+        systemNames: systemNames, // ✅ Передаем названия систем
+        reportTime: DateTime.now(),
+      );
+    } catch (e) {
+      try {
+        Navigator.pop(context);
+      } catch (_) {}
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Ошибка создания отчета: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      print('❌ Ошибка создания отчета: $e');
+    }
   }
 
   Future<void> _reloadConfig() async {
@@ -318,6 +480,53 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                       onTap: () {
                         Navigator.pushNamed(context, '/connection');
                       },
+                    ),
+                  ),
+                  // ✅ ========== НОВАЯ КНОПКА "СОЗДАТЬ ОТЧЕТ" ==========
+                  Card(
+                    elevation: 4,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      leading: const Text('📄', style: TextStyle(fontSize: 32)),
+                      title: Text(
+                        'Создать отчет',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: themeProvider.isDarkMode
+                              ? Colors.white
+                              : Colors.black87,
+                        ),
+                      ),
+                      subtitle: Text(
+                        modbus.connected
+                            ? 'Экспорт в PDF'
+                            : 'Требуется подключение',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: modbus.connected
+                              ? Colors.green
+                              : Colors.orange,
+                        ),
+                      ),
+                      trailing: Icon(
+                        Icons.picture_as_pdf,
+                        color: themeProvider.isDarkMode
+                            ? Colors.grey[400]
+                            : Colors.red,
+                      ),
+                      onTap: modbus.connected
+                          ? () {
+                              _createReport(context);
+                            }
+                          : null, // Если нет подключения - кнопка неактивна
                     ),
                   ),
 

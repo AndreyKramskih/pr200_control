@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 
 class ConfigModel {
+  final String projectName; // ✅ ДОБАВЛЯЕМ
   final ModbusServer modbusServer;
   final Map<String, SystemConfig> systems;
   final ConnectionConfig connection;
 
   ConfigModel({
+    required this.projectName, // ✅ ДОБАВЛЯЕМ
     required this.modbusServer,
     required this.systems,
     required this.connection,
@@ -13,6 +15,7 @@ class ConfigModel {
 
   factory ConfigModel.fromJson(Map<String, dynamic> json) {
     return ConfigModel(
+      projectName: json['project_name']?.toString() ?? 'ИТП №1', // ✅ ДОБАВЛЯЕМ
       modbusServer: ModbusServer.fromJson(
         json['modbus_server'] as Map<String, dynamic>? ?? {},
       ),
@@ -38,6 +41,7 @@ class ConfigModel {
   }
 
   Map<String, dynamic> toJson() => {
+    'project_name': projectName, // ✅ ДОБАВЛЯЕМ
     'modbus_server': modbusServer.toJson(),
     'systems': systems.map((key, value) => MapEntry(key, value.toJson())),
     'connection': connection.toJson(),

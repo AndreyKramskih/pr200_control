@@ -98,9 +98,10 @@ class ConfigService {
     }
   }
 
-  // Создание конфига по умолчанию
+  // ✅ МЕСТО 1: Создание конфига по умолчанию (добавляем projectName)
   ConfigModel _createDefaultConfig() {
     return ConfigModel(
+      projectName: 'ИТП №1', // ✅ ДОБАВЛЯЕМ
       modbusServer: ModbusServer(
         ip: '192.168.1.100',
         port: 502,
@@ -188,7 +189,7 @@ class ConfigService {
     );
   }
 
-  // Сохранение конфига (публичный метод)
+  // ✅ МЕСТО 2: Сохранение конфига (публичный метод) - без изменений
   Future<void> saveConfig(ConfigModel config) async {
     await _saveLocalConfig(config);
   }
