@@ -99,7 +99,15 @@ class ModbusManager {
     Map<int, dynamic> values, {
     String type = 'int',
   }) async {
-    return await _activeService.writeMultipleRegisters(values, type: type);
+    // ✅ Проверяем, что сервис существует
+    final service = _activeService;
+    if (service == null) {
+      return false;
+    }
+
+    // ✅ Явно вызываем метод и возвращаем Future<bool>
+    return await service.writeMultipleRegisters(values, type: type)
+        as Future<bool>;
   }
 
   // Аварии

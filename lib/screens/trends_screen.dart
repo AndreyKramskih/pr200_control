@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import '../models/config_model.dart';
+import '../services/modbus_manager.dart';
 import '../services/modbus_service.dart';
+import '../services/modbus_rtu_service.dart';
 import '../models/trend_data.dart';
 import '../services/logger_service.dart';
 
@@ -17,17 +19,52 @@ class _TrendsScreenState extends State<TrendsScreen> {
   List<TrendSeries> _series = [];
   Timer? _timer;
   bool _isCollecting = false;
+  bool _connected = false;
+  String _connectionType = 'none'; // 'tcp', 'rtu', 'none'
 
   @override
   void initState() {
     super.initState();
     _loadSensors();
+    _checkConnection();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     super.dispose();
+  }
+
+  // ✅ Определяем тип подключения по активным сервисам
+  String _getConnectionType() {
+    try {
+      final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
+      if (rtuService.connected) {
+        return 'rtu';
+      }
+    } catch (e) {
+      // RTU сервис не зарегистрирован
+    }
+
+    try {
+      final modbus = Provider.of<ModbusService>(context, listen: false);
+      if (modbus.connected) {
+        return 'tcp';
+      }
+    } catch (e) {
+      // TCP сервис не зарегистрирован
+    }
+
+    return 'none';
+  }
+
+  void _checkConnection() {
+    final modbusManager = ModbusManager(context);
+
+    setState(() {
+      _connected = modbusManager.connected;
+      _connectionType = _getConnectionType();
+    });
   }
 
   void _loadSensors() {
@@ -106,6 +143,17 @@ class _TrendsScreenState extends State<TrendsScreen> {
         return;
       }
 
+      final modbusManager = ModbusManager(context);
+      if (!modbusManager.connected) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Нет подключения к оборудованию'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
       _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
         _collectData();
       });
@@ -118,12 +166,14 @@ class _TrendsScreenState extends State<TrendsScreen> {
   }
 
   Future<void> _collectData() async {
-    final modbus = Provider.of<ModbusService>(context, listen: false);
+    final modbusManager = ModbusManager(context);
 
-    if (!modbus.connected) {
+    if (!modbusManager.connected) {
       _timer?.cancel();
       setState(() {
         _isCollecting = false;
+        _connected = false;
+        _connectionType = 'none';
       });
       LoggerService().log(
         '⚠️ Сбор остановлен: нет подключения',
@@ -142,10 +192,9 @@ class _TrendsScreenState extends State<TrendsScreen> {
       }
 
       try {
-        final value = await _readSensorValue(series.name);
+        final value = await _readSensorValue(series.name, modbusManager);
 
         if (value != null && value.isFinite) {
-          // ✅ Проверяем, что значение не NaN и не бесконечность
           final newPoints = List<TrendPoint>.from(series.points);
           newPoints.add(TrendPoint(timestamp: now, value: value));
 
@@ -171,9 +220,11 @@ class _TrendsScreenState extends State<TrendsScreen> {
     });
   }
 
-  Future<double?> _readSensorValue(String sensorName) async {
+  Future<double?> _readSensorValue(
+    String sensorName,
+    ModbusManager modbusManager,
+  ) async {
     final config = Provider.of<ConfigModel>(context, listen: false);
-    final modbus = Provider.of<ModbusService>(context, listen: false);
 
     for (var systemEntry in config.systems.entries) {
       final system = systemEntry.value;
@@ -184,14 +235,12 @@ class _TrendsScreenState extends State<TrendsScreen> {
         if (submenu.items != null) {
           for (var item in submenu.items!) {
             if (item.name == sensorName) {
-              final result = await modbus.readParameterValue(item);
+              final result = await modbusManager.readParameterValue(item);
               if (result != null) {
                 final doubleValue = result is double
                     ? result
                     : (result as num).toDouble();
-                return doubleValue.isFinite
-                    ? doubleValue
-                    : null; // ✅ Проверяем, что значение корректное
+                return doubleValue.isFinite ? doubleValue : null;
               }
               return null;
             }
@@ -202,7 +251,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
           for (var group in submenu.groups!) {
             for (var item in group.items) {
               if (item.name == sensorName) {
-                final result = await modbus.readParameterValue(item);
+                final result = await modbusManager.readParameterValue(item);
                 if (result != null) {
                   final doubleValue = result is double
                       ? result
@@ -239,8 +288,20 @@ class _TrendsScreenState extends State<TrendsScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final modbus = Provider.of<ModbusService>(context);
     final activeCount = _series.where((s) => s.isActive).length;
+
+    // ✅ Периодически проверяем подключение и тип
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final modbusManager = ModbusManager(context);
+      final connectionType = _getConnectionType();
+      if (_connected != modbusManager.connected ||
+          _connectionType != connectionType) {
+        setState(() {
+          _connected = modbusManager.connected;
+          _connectionType = connectionType;
+        });
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -295,26 +356,50 @@ class _TrendsScreenState extends State<TrendsScreen> {
       ),
       body: Column(
         children: [
-          // Статус
+          // ✅ Статус подключения с определением типа
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: modbus.connected ? Colors.green[50] : Colors.red[50],
+            color: _connected ? Colors.green[50] : Colors.red[50],
             child: Row(
               children: [
+                // ✅ Иконка в зависимости от типа подключения
                 Icon(
-                  modbus.connected ? Icons.wifi : Icons.wifi_off,
-                  color: modbus.connected ? Colors.green : Colors.red,
+                  _connected
+                      ? (_connectionType == 'rtu' ? Icons.usb : Icons.wifi)
+                      : Icons.wifi_off,
+                  color: _connected ? Colors.green : Colors.red,
                   size: 16,
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  modbus.connected ? 'Подключено' : 'Нет подключения',
+                  _connected
+                      ? (_connectionType == 'rtu' ? 'RTU (USB)' : 'TCP/IP')
+                      : 'Нет подключения',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
-                    color: modbus.connected ? Colors.green : Colors.red,
+                    color: _connected ? Colors.green : Colors.red,
                   ),
                 ),
+                if (_connected) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 6,
+                    height: 6,
+                    decoration: const BoxDecoration(
+                      color: Colors.green,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    _connectionType == 'rtu' ? 'USB' : 'WiFi',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    ),
+                  ),
+                ],
                 const Spacer(),
                 Text(
                   _isCollecting ? '▶️ Сбор данных...' : '⏹️ Остановлен',
@@ -327,7 +412,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
             ),
           ),
 
-          // График - обернутый в SizedBox для предотвращения NaN ошибок
+          // График
           Expanded(
             flex: 2,
             child: Container(
@@ -343,7 +428,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
             ),
           ),
 
-          // Список датчиков - ✅ оборачиваем CheckboxListTile в Material
+          // Список датчиков
           Expanded(
             flex: 1,
             child: Container(
@@ -365,7 +450,6 @@ class _TrendsScreenState extends State<TrendsScreen> {
                             ? series.points.last.value
                             : null;
 
-                        // ✅ Оборачиваем в Material для правильного отображения
                         return Material(
                           color: Colors.transparent,
                           child: CheckboxListTile(
@@ -455,7 +539,6 @@ class _TrendsScreenState extends State<TrendsScreen> {
       );
     }
 
-    // Проверяем, есть ли корректные данные
     bool hasValidData = false;
     for (var s in activeSeries) {
       for (var p in s.points) {
@@ -498,7 +581,6 @@ class TrendPainter extends CustomPainter {
 
     if (graphWidth <= 0 || graphHeight <= 0) return;
 
-    // Находим min/max для масштабирования (только корректные значения)
     double maxValue = -double.infinity;
     double minValue = double.infinity;
     int maxPoints = 0;
@@ -515,7 +597,6 @@ class TrendPainter extends CustomPainter {
 
     if (maxPoints == 0 || maxValue == -double.infinity) return;
 
-    // Добавляем отступ для масштаба
     final range = maxValue - minValue;
     if (range < 0.1) {
       maxValue += 0.5;
@@ -523,10 +604,8 @@ class TrendPainter extends CustomPainter {
     }
     final yRange = maxValue - minValue;
 
-    // Защита от деления на ноль
     if (yRange <= 0) return;
 
-    // Рисуем сетку
     final gridPaint = Paint()
       ..color = (isDark ? Colors.grey[700] : Colors.grey[300])!
       ..strokeWidth = 0.5;
@@ -540,7 +619,6 @@ class TrendPainter extends CustomPainter {
       );
     }
 
-    // Цвета для линий
     final List<Color> colors = [
       Colors.blue,
       Colors.red,
@@ -552,7 +630,6 @@ class TrendPainter extends CustomPainter {
       Colors.brown,
     ];
 
-    // Рисуем линии для каждой серии
     for (int sIndex = 0; sIndex < series.length; sIndex++) {
       final s = series[sIndex];
       final validPoints = s.points.where((p) => p.value.isFinite).toList();
@@ -566,16 +643,13 @@ class TrendPainter extends CustomPainter {
 
       final path = Path();
 
-      // ✅ Убираем xStep - используем пропорциональное распределение
       for (int i = 0; i < validPoints.length; i++) {
-        // Вычисляем позицию X пропорционально количеству точек
         final x = padding + (i / (maxPoints - 1)) * graphWidth;
         final y =
             padding +
             graphHeight -
             ((validPoints[i].value - minValue) / yRange) * graphHeight;
 
-        // Защита от NaN
         if (x.isNaN || y.isNaN) continue;
 
         if (i == 0) {
@@ -584,7 +658,6 @@ class TrendPainter extends CustomPainter {
           path.lineTo(x, y);
         }
 
-        // Рисуем точки
         final pointPaint = Paint()
           ..color = color
           ..style = PaintingStyle.fill;
@@ -594,7 +667,6 @@ class TrendPainter extends CustomPainter {
 
       canvas.drawPath(path, paint);
 
-      // Подпись с последним значением
       final lastPoint = validPoints.last;
       final lastX =
           padding + ((validPoints.length - 1) / (maxPoints - 1)) * graphWidth;
