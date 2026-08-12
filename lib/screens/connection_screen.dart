@@ -682,7 +682,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Для ПР200 используйте скорость 9600 или 115200',
+                  'Для ПР200 используйте скорость 115200 и адрес 16',
                   style: TextStyle(
                     fontSize: 12,
                     color: isDark ? Colors.grey[400] : Colors.grey[600],
