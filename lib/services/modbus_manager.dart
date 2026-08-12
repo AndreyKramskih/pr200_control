@@ -5,6 +5,7 @@ import '../models/config_model.dart';
 import '../models/modbus_data.dart';
 import 'modbus_service.dart';
 import 'modbus_rtu_service.dart';
+import 'logger_service.dart';
 
 /// Менеджер для работы с Modbus (автоматически выбирает TCP или RTU)
 class ModbusManager {
@@ -120,6 +121,7 @@ class ModbusManager {
 
   // Сброс аварий
   Future<bool> resetAlarms(int resetAddress, {int value = 1}) async {
+    LoggerService().log('🔄 resetAlarms: адрес=$resetAddress, значение=$value');
     return await _activeService.resetAlarms(resetAddress, value: value);
   }
 
