@@ -7,14 +7,6 @@
     "timeout": 3,
     "retries": 3
   },
-  "connection_type": "tcp",
-  "rtu_config": {
-    "baud_rate": 115200,
-    "data_bits": 8,
-    "stop_bits": 1,
-    "parity": "none",
-    "port_name": "/dev/bus/usb/002/007"
-  },
   "systems": {
     "heating": {
       "name": "Вентиляция",
@@ -659,5 +651,13 @@
   "connection": {
     "name": "Подключение к оборудованию",
     "icon": "📡"
+  },
+  "connection_type": "rtu",
+  "rtu_config": {
+    "port": "/dev/bus/usb/002/002",
+    "baud_rate": 115200,
+    "data_bits": 8,
+    "stop_bits": 1,
+    "parity": "none"
   }
 }

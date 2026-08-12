@@ -5,16 +5,16 @@ class ConfigModel {
   final ModbusServer modbusServer;
   final Map<String, SystemConfig> systems;
   final ConnectionConfig connection;
-  //String connectionType; // ✅ Убрали final
-  //RtuConfig? rtuConfig; // ✅ Убрали final
+  String connectionType; // ✅ 'tcp' или 'rtu'
+  RtuConfig? rtuConfig; // ✅ Настройки RTU
 
   ConfigModel({
     required this.projectName,
     required this.modbusServer,
     required this.systems,
     required this.connection,
-    //this.connectionType = 'tcp',
-    //this.rtuConfig,
+    this.connectionType = 'tcp', // ✅ По умолчанию TCP
+    this.rtuConfig,
   });
 
   factory ConfigModel.fromJson(Map<String, dynamic> json) {
@@ -27,10 +27,10 @@ class ConfigModel {
       connection: ConnectionConfig.fromJson(
         json['connection'] as Map<String, dynamic>? ?? {},
       ),
-      //connectionType: json['connection_type']?.toString() ?? 'tcp',
-      //rtuConfig: json['rtu_config'] != null
-      //? RtuConfig.fromJson(json['rtu_config'] as Map<String, dynamic>)
-      //: null,
+      connectionType: json['connection_type']?.toString() ?? 'tcp',
+      rtuConfig: json['rtu_config'] != null
+          ? RtuConfig.fromJson(json['rtu_config'] as Map<String, dynamic>)
+          : null,
     );
   }
 
@@ -52,8 +52,8 @@ class ConfigModel {
     'modbus_server': modbusServer.toJson(),
     'systems': systems.map((key, value) => MapEntry(key, value.toJson())),
     'connection': connection.toJson(),
-    //'connection_type': connectionType,
-    //if (rtuConfig != null) 'rtu_config': rtuConfig!.toJson(),
+    'connection_type': connectionType,
+    if (rtuConfig != null) 'rtu_config': rtuConfig!.toJson(),
   };
 
   SystemConfig? getSystem(String id) => systems[id];
@@ -500,27 +500,27 @@ class ControlConfig {
 
 // ✅ Добавляем класс RtuConfig в конец файла
 class RtuConfig {
-  final int baudRate;
-  final int dataBits;
-  final int stopBits;
-  final String parity;
-  final String? portName; // ✅ Добавляем поле для порта
+  int baudRate;
+  int dataBits;
+  int stopBits;
+  String parity;
+  String port; // ✅ ДОЛЖНО БЫТЬ это поле
 
   RtuConfig({
     this.baudRate = 9600,
     this.dataBits = 8,
     this.stopBits = 1,
     this.parity = 'none',
-    this.portName,
+    required this.port, // ✅ ДОЛЖЕН БЫТЬ этот параметр
   });
 
   factory RtuConfig.fromJson(Map<String, dynamic> json) {
     return RtuConfig(
+      port: json['port']?.toString() ?? '', // ✅ Читаем port из JSON
       baudRate: json['baud_rate'] as int? ?? 9600,
       dataBits: json['data_bits'] as int? ?? 8,
       stopBits: json['stop_bits'] as int? ?? 1,
       parity: json['parity']?.toString() ?? 'none',
-      portName: json['port_name']?.toString(),
     );
   }
 
@@ -529,6 +529,5 @@ class RtuConfig {
     'data_bits': dataBits,
     'stop_bits': stopBits,
     'parity': parity,
-    if (portName != null) 'port_name': portName,
   };
 }

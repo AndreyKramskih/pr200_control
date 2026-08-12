@@ -29,7 +29,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
   bool _isConnecting = false;
   bool _isSaving = false;
 
-  // RTU переменные - храним только в состоянии, не в конфиге
+  // RTU переменные
   String _connectionType = 'tcp'; // 'tcp' или 'rtu'
   List<DeviceInfo> _usbDevices = [];
   DeviceInfo? _selectedDevice;
@@ -64,10 +64,20 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
 
   void _loadConfig() {
     final config = Provider.of<ConfigModel>(context, listen: false);
+
+    // TCP настройки
     _ipController.text = config.modbusServer.ip;
     _portController.text = config.modbusServer.port.toString();
     _slaveController.text = config.modbusServer.slaveId.toString();
     _timeoutController.text = config.modbusServer.timeout.toString();
+
+    // ✅ Загружаем тип подключения
+    _connectionType = config.connectionType;
+
+    // ✅ Загружаем RTU настройки
+    if (config.rtuConfig != null) {
+      _baudRate = config.rtuConfig!.baudRate;
+    }
   }
 
   Future<void> _scanUsbDevices() async {
@@ -136,6 +146,11 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
         config.modbusServer.slaveId = slaveId;
         config.modbusServer.timeout = timeout;
 
+        // ✅ Сохраняем тип
+        config.connectionType = 'tcp';
+        // ✅ Очищаем RTU настройки
+        config.rtuConfig = null;
+
         final configService = ConfigService();
         await configService.saveConfig(config);
 
@@ -164,7 +179,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
         LoggerService().log('❌ Ошибка сохранения: $e', level: LogLevel.error);
       }
     } else {
-      // RTU - просто сохраняем параметры подключения
+      // RTU
       if (_selectedDevice == null) {
         setState(() {
           _status = '❌ Выберите USB устройство';
@@ -183,9 +198,18 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
       });
 
       try {
-        // Сохраняем только основные настройки Modbus
         config.modbusServer.slaveId = slaveId;
         config.modbusServer.timeout = timeout;
+
+        // ✅ Сохраняем RTU настройки
+        config.connectionType = 'rtu';
+        config.rtuConfig = RtuConfig(
+          port: _selectedDevice!.deviceName,
+          baudRate: _baudRate,
+          dataBits: 8,
+          stopBits: 1,
+          parity: 'none',
+        );
 
         final configService = ConfigService();
         await configService.saveConfig(config);
@@ -256,6 +280,10 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
       });
 
       if (success) {
+        // ✅ Обновляем тип в конфиге
+        final config = Provider.of<ConfigModel>(context, listen: false);
+        config.connectionType = 'tcp';
+
         setState(() {
           _status = '✅ Подключено к $ip:$port';
           _statusColor = Colors.green;
@@ -306,6 +334,10 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
       });
 
       if (success) {
+        // ✅ Обновляем тип в конфиге
+        final config = Provider.of<ConfigModel>(context, listen: false);
+        config.connectionType = 'rtu';
+
         setState(() {
           _status = '✅ RTU подключен к $devicePath';
           _statusColor = Colors.green;

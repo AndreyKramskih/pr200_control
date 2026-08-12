@@ -6,7 +6,6 @@ import 'providers/theme_provider.dart';
 import 'services/modbus_service.dart';
 import 'services/modbus_rtu_service.dart';
 import 'services/config_service.dart';
-import 'services/config_manager.dart';
 import 'screens/main_menu_screen.dart';
 import 'screens/system_screen.dart';
 import 'screens/connection_screen.dart';
@@ -50,26 +49,8 @@ class _MyAppState extends State<MyApp> {
     final configService = ConfigService();
 
     try {
-      final activeConfigName = await ConfigManager.getActiveConfig();
-      ConfigModel? config;
-
-      if (activeConfigName != null) {
-        LoggerService().log('📂 Загрузка активного конфига: $activeConfigName');
-        config = await ConfigManager.loadConfig(activeConfigName);
-        if (config != null) {
-          LoggerService().log('✅ Активный конфиг загружен: $activeConfigName');
-        } else {
-          LoggerService().log(
-            '⚠️ Активный конфиг не найден, загружаем стандартный',
-            level: LogLevel.warning,
-          );
-        }
-      }
-
-      if (config == null) {
-        LoggerService().log('📂 Загрузка стандартного конфига');
-        config = await configService.loadConfig();
-      }
+      LoggerService().log('📂 Загрузка стандартного конфига');
+      final config = await configService.loadConfig();
 
       if (mounted) {
         setState(() {
@@ -78,8 +59,8 @@ class _MyAppState extends State<MyApp> {
         });
       }
 
-      // Автоподключение по TCP (только для TCP, RTU подключается вручную)
-      await _autoConnectTCP();
+      // Автоподключение
+      await _autoConnect();
     } catch (e) {
       LoggerService().log(
         '❌ Ошибка загрузки конфига: $e',
@@ -93,31 +74,64 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  // Только TCP автоподключение
-  Future<void> _autoConnectTCP() async {
+  Future<void> _autoConnect() async {
     if (_config == null) return;
 
-    try {
-      final success = await _modbusService.connect(
-        _config!.modbusServer.ip,
-        port: _config!.modbusServer.port,
-        slaveId: _config!.modbusServer.slaveId,
-        timeout: _config!.modbusServer.timeout,
-      );
+    final config = _config!;
 
-      if (success) {
-        LoggerService().log('✅ TCP автоподключение успешно');
-      } else {
+    if (config.connectionType == 'rtu') {
+      // RTU автоподключение
+      try {
+        final devices = await _modbusRtuService.getAvailableDevices();
+
+        if (devices.isNotEmpty) {
+          String port;
+          // ✅ Используем config.rtuConfig?.port
+          if (config.rtuConfig != null && config.rtuConfig!.port.isNotEmpty) {
+            final savedPort = config.rtuConfig!.port;
+            final found = devices.firstWhere(
+              (d) => d.deviceName == savedPort,
+              orElse: () => devices.first,
+            );
+            port = found.deviceName;
+          } else {
+            port = devices.first.deviceName;
+          }
+
+          final baudRate = config.rtuConfig?.baudRate ?? 115200;
+
+          await _modbusRtuService.connect(
+            port: port,
+            slaveId: config.modbusServer.slaveId,
+            timeout: config.modbusServer.timeout,
+            baudRate: baudRate,
+          );
+          LoggerService().log('✅ RTU автоподключение успешно');
+        } else {
+          LoggerService().log('⚠️ USB устройство не найдено для RTU');
+        }
+      } catch (e) {
         LoggerService().log(
-          '⚠️ TCP автоподключение не удалось: ${_modbusService.lastError}',
-          level: LogLevel.warning,
+          '❌ Ошибка RTU автоподключения: $e',
+          level: LogLevel.error,
         );
       }
-    } catch (e) {
-      LoggerService().log(
-        '⚠️ Автоподключение не удалось: $e',
-        level: LogLevel.warning,
-      );
+    } else {
+      // TCP автоподключение
+      try {
+        await _modbusService.connect(
+          config.modbusServer.ip,
+          port: config.modbusServer.port,
+          slaveId: config.modbusServer.slaveId,
+          timeout: config.modbusServer.timeout,
+        );
+        LoggerService().log('✅ TCP автоподключение успешно');
+      } catch (e) {
+        LoggerService().log(
+          '❌ Ошибка TCP автоподключения: $e',
+          level: LogLevel.error,
+        );
+      }
     }
   }
 
