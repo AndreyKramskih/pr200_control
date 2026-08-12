@@ -1,15 +1,17 @@
 // lib/widgets/pump_widget.dart
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+
 import '../models/config_model.dart';
-import '../services/modbus_service.dart';
+import '../services/modbus_manager.dart';
 
 class PumpWidget extends StatelessWidget {
   final ItemConfig item;
   final dynamic value;
   final dynamic modeValue;
-  final VoidCallback? onModeChanged;
-  final String? pumpId; // ✅ Добавляем уникальный ID для насоса
+  final void Function(int)? onModeChanged;
+  final String? pumpId;
+  final VoidCallback? onDropdownOpen;
+  final VoidCallback? onDropdownClose;
 
   const PumpWidget({
     super.key,
@@ -17,7 +19,9 @@ class PumpWidget extends StatelessWidget {
     this.value,
     this.modeValue,
     this.onModeChanged,
-    this.pumpId, // ✅ Добавляем
+    this.pumpId,
+    this.onDropdownOpen,
+    this.onDropdownClose,
   });
 
   @override
@@ -45,7 +49,6 @@ class PumpWidget extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Верхняя строка: название и статус
             Row(
               children: [
                 Icon(
@@ -95,8 +98,6 @@ class PumpWidget extends StatelessWidget {
                 ),
               ],
             ),
-
-            // Режим работы (если есть)
             if (hasMode) ...[
               const SizedBox(height: 12),
               const Divider(height: 1),
@@ -123,9 +124,8 @@ class PumpWidget extends StatelessWidget {
   }
 
   Widget _buildModeDropdown(BuildContext context) {
-    final modbus = Provider.of<ModbusService>(context, listen: false);
+    final modbusManager = ModbusManager(context);
 
-    // ✅ Используем pumpId для уникального ключа dropdown
     final dropdownKey = ValueKey('dropdown_${pumpId ?? item.address}');
 
     int currentMode = 0;
@@ -136,12 +136,7 @@ class PumpWidget extends StatelessWidget {
     final modeStates = item.modeStates!;
     final modeAddress = item.modeAddress!;
 
-    print(
-      '📊 Dropdown для ${item.name}: currentMode=$currentMode, modeAddress=$modeAddress, modeStates=$modeStates',
-    );
-
     if (currentMode < 0 || currentMode >= modeStates.length) {
-      print('⚠️ currentMode=$currentMode вне диапазона, устанавливаю 0');
       currentMode = 0;
     }
 
@@ -152,7 +147,7 @@ class PumpWidget extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: DropdownButton<int>(
-        key: dropdownKey, // ✅ Уникальный ключ
+        key: dropdownKey,
         value: currentMode,
         isExpanded: true,
         underline: const SizedBox(),
@@ -161,10 +156,15 @@ class PumpWidget extends StatelessWidget {
           final label = entry.value;
           return DropdownMenuItem<int>(value: index, child: Text(label));
         }).toList(),
+        onTap: () {
+          print('🔽 Dropdown для ${item.name} открыт');
+          if (onDropdownOpen != null) {
+            onDropdownOpen!();
+          }
+        },
         onChanged: (newValue) async {
           if (newValue == null) return;
 
-          // ✅ Явно указываем, какой насос меняется
           final pumpName = item.name;
           final address = modeAddress;
 
@@ -172,28 +172,53 @@ class PumpWidget extends StatelessWidget {
             '🔵 Изменение режима: $pumpName -> ${modeStates[newValue]} (адрес $address)',
           );
 
-          final success = await modbus.writeRegister(address, newValue);
+          // ❌ НЕ вызываем onDropdownClose здесь!
+          // onDropdownClose будет вызван ПОСЛЕ завершения записи
 
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  success
-                      ? 'Режим насоса "$pumpName" изменен на "${modeStates[newValue]}"'
-                      : 'Ошибка изменения режима',
-                ),
-                backgroundColor: success ? Colors.green : Colors.red,
-                duration: const Duration(seconds: 2),
+              const SnackBar(
+                content: Text('⏳ Отправка запроса...'),
+                duration: Duration(milliseconds: 300),
               ),
             );
+          }
+
+          final success = await modbusManager.writeRegister(address, newValue);
+
+          // ✅ Закрываем dropdown ПОСЛЕ завершения записи
+          if (onDropdownClose != null) {
+            onDropdownClose!();
+          }
+
+          // ✅ Дополнительная задержка после записи
+          await Future.delayed(const Duration(milliseconds: 300));
+
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).clearSnackBars();
 
             if (success) {
-              print(
-                '✅ Режим записан успешно, вызываю onModeChanged для $pumpName',
-              );
               if (onModeChanged != null) {
-                onModeChanged!();
+                onModeChanged!(newValue);
               }
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    '✅ Режим насоса "$pumpName" изменен на "${modeStates[newValue]}"',
+                  ),
+                  backgroundColor: Colors.green,
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('❌ Ошибка изменения режима'),
+                  backgroundColor: Colors.red,
+                  duration: const Duration(seconds: 2),
+                ),
+              );
             }
           }
         },

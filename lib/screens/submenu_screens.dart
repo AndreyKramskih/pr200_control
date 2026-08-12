@@ -4,13 +4,13 @@ import 'package:provider/provider.dart';
 import 'dart:async';
 import '../models/config_model.dart';
 import '../models/modbus_data.dart';
-import '../services/modbus_service.dart';
+import '../services/modbus_manager.dart';
 import '../widgets/sensor_widget.dart';
 import '../widgets/relay_widget.dart';
 import '../widgets/pump_widget.dart';
 import '../widgets/parameter_widget.dart';
-
 import '../services/logger_service.dart';
+import '../services/modbus_rtu_service.dart'; // ✅ ДОБАВИТЬ ЭТОТ ИМПОРТ
 
 class SubmenuScreen extends StatefulWidget {
   final String systemId;
@@ -28,6 +28,7 @@ class SubmenuScreen extends StatefulWidget {
 
 class _SubmenuScreenState extends State<SubmenuScreen> {
   bool _isLoading = false;
+  bool _isDropdownOpen = false; // ✅ Флаг: открыт ли dropdown
 
   // Данные для реального времени (датчики, реле, статусы)
   final Map<String, dynamic> _realtimeData = {};
@@ -91,12 +92,53 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
   void _startAutoUpdate() {
     _updateTimer?.cancel();
-    // ✅ Интервал 1 секунда для датчиков и статусов
     _updateTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      // ✅ Если dropdown открыт — НЕ обновляем
+      if (_isDropdownOpen) {
+        print('⏳ Dropdown открыт, обновление приостановлено');
+        return;
+      }
+
+      // ✅ Проверяем, не идет ли запись в RTU
+      try {
+        final rtuService = Provider.of<ModbusRtuService>(
+          context,
+          listen: false,
+        );
+        if (rtuService.isWriting) {
+          print('⏳ Идет запись в RTU, пропускаю обновление');
+          return;
+        }
+      } catch (e) {
+        // Игнорируем
+      }
+
       if (mounted && !_isLoading) {
         _updateRealtimeData();
       }
     });
+  }
+
+  // ✅ Методы для управления флагом
+  void _onDropdownOpen() {
+    if (!_isDropdownOpen) {
+      print('🔽 Dropdown открыт, таймер остановлен');
+      setState(() {
+        _isDropdownOpen = true;
+      });
+      // Таймер автоматически пропустит обновления
+    }
+  }
+
+  void _onDropdownClose() {
+    if (_isDropdownOpen) {
+      print('🔼 Dropdown закрыт, таймер возобновлен');
+      setState(() {
+        _isDropdownOpen = false;
+      });
+      // ✅ Принудительно обновляем данные после закрытия dropdown
+      _updateRealtimeData();
+    }
   }
 
   // ==================== ЗАГРУЗКА ДАННЫХ ====================
@@ -145,10 +187,10 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
   /// Загрузка данных реального времени (один раз при открытии)
   Future<void> _loadRealtimeData(SubmenuConfig submenu) async {
-    final modbus = Provider.of<ModbusService>(context, listen: false);
-    if (!modbus.connected) return;
+    final modbusManager = ModbusManager(context);
+    if (!modbusManager.connected) return;
+
     LoggerService().log('🔵 _loadRealtimeData: загрузка для ${submenu.name}');
-    //print('🔵 _loadRealtimeData: загрузка для ${submenu.name}');
 
     final Map<String, dynamic> newData = {};
 
@@ -165,14 +207,18 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       }
 
       if (intAddresses.isNotEmpty) {
-        final intResults = await modbus.readMultipleRegisters(intAddresses);
+        final intResults = await modbusManager.readMultipleRegisters(
+          intAddresses,
+        );
         for (final entry in intResults.entries) {
           newData['${entry.key}'] = entry.value;
         }
       }
 
       if (floatAddresses.isNotEmpty) {
-        final floatResults = await modbus.readMultipleFloats(floatAddresses);
+        final floatResults = await modbusManager.readMultipleFloats(
+          floatAddresses,
+        );
         for (final entry in floatResults.entries) {
           newData['${entry.key}'] = entry.value;
         }
@@ -187,7 +233,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       LoggerService().log(
         '✅ _loadRealtimeData: загружено ${_realtimeData.length} значений',
       );
-      //print('✅ _loadRealtimeData: загружено ${_realtimeData.length} значений');
     }
 
     // ✅ ИСПРАВЛЕННОЕ ЧТЕНИЕ АВАРИЙ (ПО АДРЕСАМ)
@@ -201,7 +246,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
       final allActiveAlarms = <AlarmItem>[];
       for (final entry in alarmsByAddress.entries) {
-        final result = await modbus.readAlarms(entry.key, entry.value);
+        final result = await modbusManager.readAlarms(entry.key, entry.value);
         allActiveAlarms.addAll(result);
       }
 
@@ -218,10 +263,28 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   Future<void> _updateRealtimeData() async {
     if (!mounted) return;
 
-    final config = Provider.of<ConfigModel>(context, listen: false);
-    final modbus = Provider.of<ModbusService>(context, listen: false);
+    // ✅ Проверка: если dropdown открыт — НЕ обновляем
+    if (_isDropdownOpen) {
+      print('⏳ Dropdown открыт, обновление приостановлено');
+      return;
+    }
 
-    if (!modbus.connected) return;
+    // ✅ Проверка: если идет запись в RTU — пропускаем обновление
+    try {
+      final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
+      if (rtuService.isWriting) {
+        print('⏳ Идет запись в RTU, пропускаю обновление');
+        return;
+      }
+    } catch (e) {
+      // Если RTU сервис не инициализирован или не в провайдере — игнорируем
+      // (это значит, что мы в TCP режиме или сервис еще не создан)
+    }
+
+    final config = Provider.of<ConfigModel>(context, listen: false);
+    final modbusManager = ModbusManager(context);
+
+    if (!modbusManager.connected) return;
 
     final system = config.getSystem(widget.systemId);
     if (system == null) return;
@@ -244,14 +307,18 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       }
 
       if (intAddresses.isNotEmpty) {
-        final intResults = await modbus.readMultipleRegisters(intAddresses);
+        final intResults = await modbusManager.readMultipleRegisters(
+          intAddresses,
+        );
         for (final entry in intResults.entries) {
           newData['${entry.key}'] = entry.value;
         }
       }
 
       if (floatAddresses.isNotEmpty) {
-        final floatResults = await modbus.readMultipleFloats(floatAddresses);
+        final floatResults = await modbusManager.readMultipleFloats(
+          floatAddresses,
+        );
         for (final entry in floatResults.entries) {
           newData['${entry.key}'] = entry.value;
         }
@@ -278,57 +345,16 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
         });
       }
     }
-
-    // ✅ ИСПРАВЛЕННОЕ ЧТЕНИЕ АВАРИЙ (ПО АДРЕСАМ)
-    if (submenu.type == 'alarms' &&
-        submenu.alarms != null &&
-        submenu.alarms!.isNotEmpty &&
-        mounted) {
-      // Группируем аварии по адресам
-      final alarmsByAddress = <int, List<AlarmConfig>>{};
-      for (final alarm in submenu.alarms!) {
-        alarmsByAddress.putIfAbsent(alarm.address, () => []).add(alarm);
-      }
-
-      final allActiveAlarms = <AlarmItem>[];
-
-      // Читаем КАЖДЫЙ адрес отдельно
-      for (final entry in alarmsByAddress.entries) {
-        final address = entry.key;
-        final alarmsList = entry.value;
-        LoggerService().log(
-          '📖 Чтение аварий из регистра $address (${alarmsList.length} аварий)',
-        );
-        //print(
-        //  '📖 Чтение аварий из регистра $address (${alarmsList.length} аварий)',
-        //);
-        final result = await modbus.readAlarms(address, alarmsList);
-        allActiveAlarms.addAll(result);
-      }
-
-      if (mounted) {
-        setState(() {
-          _alarms.clear();
-          _alarms.addAll(allActiveAlarms);
-        });
-      }
-    }
-
-    // Обновляем режимы насосов
-    if (submenu.type == 'pumps' && mounted) {
-      await _loadPumpModes(submenu);
-    }
   }
 
   // ==================== РЕЖИМЫ НАСОСОВ (ТОЛЬКО ПРИ ЗАГРУЗКЕ И ИЗМЕНЕНИИ) ====================
 
   Future<void> _loadPumpModes(SubmenuConfig submenu) async {
-    final modbus = Provider.of<ModbusService>(context, listen: false);
-    if (!modbus.connected) return;
+    final modbusManager = ModbusManager(context);
+    if (!modbusManager.connected) return;
 
     if (submenu.items == null || submenu.items!.isEmpty) return;
     LoggerService().log('🔵 _loadPumpModes: загрузка режимов насосов...');
-    //print('🔵 _loadPumpModes: загрузка режимов насосов...');
 
     final Map<String, dynamic> newModeData = {};
     bool hasChanges = false;
@@ -336,11 +362,10 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
     for (final item in submenu.items!) {
       if (item.modeAddress != null) {
         // ✅ Читаем по одному регистру для режимов
-        final value = await modbus.readRegister(item.modeAddress!);
+        final value = await modbusManager.readRegister(item.modeAddress!);
         LoggerService().log(
           '📊 Режим "${item.name}" (адрес ${item.modeAddress}) = $value',
         );
-        //print('📊 Режим "${item.name}" (адрес ${item.modeAddress}) = $value');
 
         if (value != null) {
           final key = item.modeAddress.toString();
@@ -352,7 +377,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       }
     }
     LoggerService().log('📊 newModeData: $newModeData');
-    //print('📊 newModeData: $newModeData');
 
     if (hasChanges && mounted) {
       setState(() {
@@ -362,17 +386,15 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       LoggerService().log(
         '✅ _loadPumpModes: режимы обновлены, _modeData = $_modeData',
       );
-      //print('✅ _loadPumpModes: режимы обновлены, _modeData = $_modeData');
     }
   }
 
   // ==================== НАСТРОЙКИ (ТОЛЬКО ПРИ ЗАГРУЗКЕ) ====================
 
   Future<void> _loadSettingsData(SubmenuConfig submenu) async {
-    final modbus = Provider.of<ModbusService>(context, listen: false);
-    if (!modbus.connected) return;
+    final modbusManager = ModbusManager(context);
+    if (!modbusManager.connected) return;
     LoggerService().log('🔵 _loadSettingsData: загрузка настроек...');
-    //print('🔵 _loadSettingsData: загрузка настроек...');
 
     final Map<String, dynamic> newData = {};
 
@@ -395,12 +417,13 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
     // ✅ Читаем int пакетами до 12 регистров
     if (intAddresses.isNotEmpty) {
-      final intResults = await modbus.readMultipleRegisters(intAddresses);
+      final intResults = await modbusManager.readMultipleRegisters(
+        intAddresses,
+      );
       for (final entry in intResults.entries) {
         final item = addressToItem[entry.key];
         if (item != null) {
           LoggerService().log('✅ ${item.name} = ${entry.value}');
-          //print('✅ ${item.name} = ${entry.value}');
           newData['${entry.key}'] = entry.value;
         }
       }
@@ -408,12 +431,13 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
     // ✅ Читаем float пакетами до 6 значений (12 регистров)
     if (floatAddresses.isNotEmpty) {
-      final floatResults = await modbus.readMultipleFloats(floatAddresses);
+      final floatResults = await modbusManager.readMultipleFloats(
+        floatAddresses,
+      );
       for (final entry in floatResults.entries) {
         final item = addressToItem[entry.key];
         if (item != null) {
           LoggerService().log('✅ ${item.name} = ${entry.value}');
-          //print('✅ ${item.name} = ${entry.value}');
           newData['${entry.key}'] = entry.value;
         }
       }
@@ -426,9 +450,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
         LoggerService().log(
           '⚠️ ${item.name} не прочитан, использую default: ${item.defaultValue}',
         );
-        //print(
-        //  '⚠️ ${item.name} не прочитан, использую default: ${item.defaultValue}',
-        //);
         newData[key] = item.defaultValue;
       }
     }
@@ -441,7 +462,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       LoggerService().log(
         '✅ _loadSettingsData: загружено ${_settingsData.length} значений',
       );
-      //print('✅ _loadSettingsData: загружено ${_settingsData.length} значений');
     }
   }
 
@@ -509,10 +529,10 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   Future<void> _saveAllSettings() async {
     if (!mounted) return;
 
-    final modbus = Provider.of<ModbusService>(context, listen: false);
+    final modbusManager = ModbusManager(context);
     final config = Provider.of<ConfigModel>(context, listen: false);
 
-    if (!modbus.connected) {
+    if (!modbusManager.connected) {
       _showError('Нет подключения к ПЛК');
       return;
     }
@@ -535,9 +555,9 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
             // Читаем текущее значение из ПЛК для сравнения
             dynamic currentValue;
             if (item.type == 'float') {
-              currentValue = await modbus.readFloat(item.address);
+              currentValue = await modbusManager.readFloat(item.address);
             } else {
-              currentValue = await modbus.readRegister(
+              currentValue = await modbusManager.readRegister(
                 item.address,
                 type: item.type,
               );
@@ -559,7 +579,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
     LoggerService().log(
       '🔵 Сохранение ${changedValues.length} измененных параметров...)',
     );
-    //print('🔵 Сохранение ${changedValues.length} измененных параметров...');
 
     // Показываем диалог подтверждения
     final confirm = await showDialog<bool>(
@@ -619,57 +638,33 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
     }
 
     // Записываем все значения
-    final results = <int, bool>{};
+    bool allSuccess = true;
 
     // Записываем int
     if (intValues.isNotEmpty) {
-      final intResults = await modbus.writeMultipleRegisters(
+      final success = await modbusManager.writeMultipleRegisters(
         intValues,
         type: 'int',
       );
-      results.addAll(intResults);
+      if (!success) allSuccess = false;
     }
 
     // Записываем float
     if (floatValues.isNotEmpty) {
-      final floatResults = await modbus.writeMultipleRegisters(
+      final success = await modbusManager.writeMultipleRegisters(
         floatValues,
         type: 'float',
       );
-      results.addAll(floatResults);
+      if (!success) allSuccess = false;
     }
 
-    final successCount = results.values.where((v) => v).length;
-    final failCount = results.values.where((v) => !v).length;
-
     if (mounted) {
-      if (failCount == 0) {
-        _showSuccess('Все $successCount параметров сохранены!');
+      if (allSuccess) {
+        _showSuccess('Все параметры сохранены!');
         await _reloadSettings();
       } else {
-        _showError('Сохранено $successCount, ошибок: $failCount');
-        // Перечитываем только те, что не сохранились
-        for (final entry in results.entries) {
-          if (!entry.value) {
-            final item = _findItemByAddress(submenu, entry.key);
-            if (item != null) {
-              dynamic currentValue;
-              if (item.type == 'float') {
-                currentValue = await modbus.readFloat(item.address);
-              } else {
-                currentValue = await modbus.readRegister(
-                  item.address,
-                  type: item.type,
-                );
-              }
-              if (currentValue != null && mounted) {
-                setState(() {
-                  _settingsData['${item.address}'] = currentValue;
-                });
-              }
-            }
-          }
-        }
+        _showError('Ошибка при сохранении некоторых параметров');
+        await _reloadSettings();
       }
     }
   }
@@ -829,6 +824,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
   // ==================== НАСОСЫ ====================
 
+  // lib/screens/submenu_screens.dart
   Widget _buildPumps(SubmenuConfig submenu) {
     if (submenu.items == null || submenu.items!.isEmpty) {
       return const Center(child: Text('Нет насосов'));
@@ -840,39 +836,40 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
         final index = entry.key;
         final item = entry.value;
 
-        // ✅ Данные реального времени (вкл/выкл)
         final value = _realtimeData[item.address.toString()];
-
-        // ✅ Режим насоса (загружается отдельно)
         final modeValue = item.modeAddress != null
             ? _modeData[item.modeAddress.toString()]
             : null;
 
-        // ✅ Уникальный ID для каждого насоса
         final pumpId = 'pump_${index}_${item.address}';
 
         return PumpWidget(
           item: item,
           value: value,
           modeValue: modeValue,
-          pumpId: pumpId, // ✅ Передаем уникальный ID
+          pumpId: pumpId,
           key: ValueKey('pump_${item.address}_${modeValue ?? 0}_$index'),
-          onModeChanged: () {
+          onDropdownOpen: _onDropdownOpen,
+          onDropdownClose: _onDropdownClose,
+          // ✅ НЕ перечитываем режимы! Только обновляем локально
+          onModeChanged: (newValue) {
+            final address = item.modeAddress!;
             LoggerService().log(
-              '🔵 onModeChanged вызван для ${item.name} (адрес ${item.address})',
+              '🔄 Локальное обновление режима: ${item.name} -> $newValue (адрес $address)',
             );
-            //print(
-            // '🔵 onModeChanged вызван для ${item.name} (адрес ${item.address})',
-            //);
+
+            // ✅ Просто обновляем _modeData локально
             if (mounted) {
-              // ✅ Перезагружаем только режимы насосов
-              _loadPumpModes(submenu);
+              setState(() {
+                _modeData[address.toString()] = newValue;
+              });
             }
           },
         );
       }).toList(),
     );
   }
+
   // ==================== КЛАПАН ====================
 
   Widget _buildValve(SubmenuConfig submenu) {
@@ -1210,11 +1207,8 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
                 Expanded(
                   child: ElevatedButton(
                     onPressed: () async {
-                      final modbus = Provider.of<ModbusService>(
-                        context,
-                        listen: false,
-                      );
-                      final success = await modbus.writeRegister(
+                      final modbusManager = ModbusManager(context);
+                      final success = await modbusManager.writeRegister(
                         item.address,
                         0,
                         type: item.type,
@@ -1246,11 +1240,8 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
                 Expanded(
                   child: ElevatedButton(
                     onPressed: () async {
-                      final modbus = Provider.of<ModbusService>(
-                        context,
-                        listen: false,
-                      );
-                      final success = await modbus.writeRegister(
+                      final modbusManager = ModbusManager(context);
+                      final success = await modbusManager.writeRegister(
                         item.address,
                         100,
                         type: item.type,
@@ -1283,13 +1274,10 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
             const SizedBox(height: 8),
             ElevatedButton(
               onPressed: () async {
-                final modbus = Provider.of<ModbusService>(
-                  context,
-                  listen: false,
-                );
+                final modbusManager = ModbusManager(context);
                 final valueToWrite = _settingsData[item.address.toString()];
                 if (valueToWrite != null) {
-                  final success = await modbus.writeRegister(
+                  final success = await modbusManager.writeRegister(
                     item.address,
                     valueToWrite,
                     type: item.type,
@@ -1324,9 +1312,9 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   Future<void> _switchValveMode(ItemConfig item, bool manual) async {
     if (!mounted) return;
 
-    final modbus = Provider.of<ModbusService>(context, listen: false);
+    final modbusManager = ModbusManager(context);
 
-    final currentValue = await modbus.readRegister(item.address);
+    final currentValue = await modbusManager.readRegister(item.address);
     if (currentValue == null) {
       if (mounted) _showError('Не удалось прочитать текущий режим');
       return;
@@ -1336,7 +1324,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
         ? currentValue | (1 << (item.bit ?? 0))
         : currentValue & ~(1 << (item.bit ?? 0));
 
-    final success = await modbus.writeRegister(item.address, newValue);
+    final success = await modbusManager.writeRegister(item.address, newValue);
 
     if (success && mounted) {
       _showSuccess(
@@ -1349,7 +1337,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   }
 
   Widget _buildValveControl(ControlConfig control) {
-    final modbus = Provider.of<ModbusService>(context, listen: false);
+    final modbusManager = ModbusManager(context);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -1363,7 +1351,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
         onTap: () async {
           if (!mounted) return;
 
-          final success = await modbus.writeRegister(
+          final success = await modbusManager.writeRegister(
             control.address,
             control.value,
           );
@@ -1464,18 +1452,12 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
                   onSave: (newValue) async {
                     if (!mounted) return;
 
-                    final modbus = Provider.of<ModbusService>(
-                      context,
-                      listen: false,
-                    );
+                    final modbusManager = ModbusManager(context);
                     LoggerService().log(
                       '🔵 Сохранение: ${item.name} = $newValue в адрес ${item.address}',
                     );
-                    //print(
-                    // '🔵 Сохранение: ${item.name} = $newValue в адрес ${item.address}',
-                    //);
 
-                    final success = await modbus.writeRegister(
+                    final success = await modbusManager.writeRegister(
                       item.address,
                       newValue,
                       type: item.type,
@@ -1500,15 +1482,12 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
                   onLoad: () async {
                     if (!mounted) return null;
 
-                    final modbus = Provider.of<ModbusService>(
-                      context,
-                      listen: false,
-                    );
+                    final modbusManager = ModbusManager(context);
                     dynamic loadedValue;
                     if (item.type == 'float') {
-                      loadedValue = await modbus.readFloat(item.address);
+                      loadedValue = await modbusManager.readFloat(item.address);
                     } else {
-                      loadedValue = await modbus.readRegister(
+                      loadedValue = await modbusManager.readRegister(
                         item.address,
                         type: item.type,
                       );
@@ -1603,9 +1582,9 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
             onPressed: () async {
               if (!mounted) return;
 
-              final modbus = Provider.of<ModbusService>(context, listen: false);
+              final modbusManager = ModbusManager(context);
 
-              if (!modbus.connected) {
+              if (!modbusManager.connected) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
@@ -1644,7 +1623,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
               if (confirm != true || !mounted) return;
 
               // ✅ Используем правильный сброс аварий
-              final success = await modbus.resetAlarms(513);
+              final success = await modbusManager.resetAlarms(513);
 
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -1676,6 +1655,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       ],
     );
   }
+
   // ==================== ВКЛ/ВЫКЛ ====================
 
   Widget _buildStartStop(SubmenuConfig submenu) {
@@ -1741,16 +1721,13 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
                 onPressed: () async {
                   if (!mounted) return;
 
-                  final modbus = Provider.of<ModbusService>(
-                    context,
-                    listen: false,
-                  );
+                  final modbusManager = ModbusManager(context);
                   final currentValue = value ?? 0;
                   final newRegister = isOn
                       ? currentValue & ~(1 << (item.bit ?? 0))
                       : currentValue | (1 << (item.bit ?? 0));
 
-                  final success = await modbus.writeRegister(
+                  final success = await modbusManager.writeRegister(
                     item.address,
                     newRegister,
                   );

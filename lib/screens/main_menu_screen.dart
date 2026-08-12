@@ -4,12 +4,10 @@ import 'package:provider/provider.dart';
 import '../models/config_model.dart';
 import '../providers/theme_provider.dart';
 import '../services/modbus_service.dart';
+import '../services/modbus_rtu_service.dart';
 import '../screens/load_config_screen.dart';
-// ✅ Добавляем импорт для экрана логов
 import '../screens/log_screen.dart';
-// ✅ Добавляем импорт для экрана трендов
 import '../screens/trends_screen.dart';
-
 import '../services/report_service.dart';
 
 class MainMenuScreen extends StatefulWidget {
@@ -28,25 +26,45 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   void initState() {
     super.initState();
     _checkConnection();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final modbus = Provider.of<ModbusService>(context, listen: false);
+      final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
+      modbus.addListener(_onConnectionChanged);
+      rtuService.addListener(_onConnectionChanged);
+    });
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
+  void dispose() {
+    final modbus = Provider.of<ModbusService>(context, listen: false);
+    final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
+    modbus.removeListener(_onConnectionChanged);
+    rtuService.removeListener(_onConnectionChanged);
+    super.dispose();
+  }
+
+  void _onConnectionChanged() {
     _checkConnection();
   }
 
   void _checkConnection() {
     final modbus = Provider.of<ModbusService>(context, listen: false);
-    final config = Provider.of<ConfigModel>(context, listen: false);
+    final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
 
     setState(() {
-      _statusText = modbus.connected ? 'Подключено' : 'Не подключено';
-      _statusColor = modbus.connected ? Colors.green : Colors.red;
-      if (modbus.connected) {
-        _connectionInfo =
-            '${config.modbusServer.ip}:${config.modbusServer.port}';
+      // ✅ Проверяем RTU первым (он имеет приоритет)
+      if (rtuService.connected) {
+        _statusText = 'Подключено (USB)';
+        _statusColor = Colors.green;
+        _connectionInfo = rtuService.portName;
+      } else if (modbus.connected) {
+        _statusText = 'Подключено (WiFi)';
+        _statusColor = Colors.green;
+        _connectionInfo = '${modbus.ip}:${modbus.port}';
       } else {
+        _statusText = 'Не подключено';
+        _statusColor = Colors.red;
         _connectionInfo = '';
       }
     });
@@ -56,8 +74,12 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     try {
       final config = Provider.of<ConfigModel>(context, listen: false);
       final modbus = Provider.of<ModbusService>(context, listen: false);
+      final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
 
-      if (!modbus.connected) {
+      // ✅ Проверяем подключение - RTU или TCP
+      final bool isConnected = rtuService.connected || modbus.connected;
+
+      if (!isConnected) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('❌ Нет подключения к устройству'),
@@ -87,9 +109,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
         ),
       );
 
-      // ✅ Изменяем структуру: теперь храним имя системы и параметры
       final systemData = <String, Map<String, dynamic>>{};
-      final systemNames = <String, String>{}; // ✅ Храним названия систем
+      final systemNames = <String, String>{};
 
       print('📊 Начинаем сбор данных...');
       print('📋 Систем в конфиге: ${config.systems.length}');
@@ -98,8 +119,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
         final systemId = entry.key;
         final system = entry.value;
         final data = <String, dynamic>{};
-
-        // ✅ Сохраняем название системы
         systemNames[systemId] = system.name;
 
         print('📁 Система: $systemId (${system.name})');
@@ -110,15 +129,19 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
           if (submenu.items != null) {
             for (var item in submenu.items!) {
               try {
-                final value = await modbus.readParameterValue(item);
-
+                dynamic value;
+                // ✅ Используем активный сервис
+                if (rtuService.connected) {
+                  value = await rtuService.readParameterValue(item);
+                } else {
+                  value = await modbus.readParameterValue(item);
+                }
                 data[item.name] = {
                   'value': value ?? '--',
                   'unit': item.unit ?? '',
                   'bit': item.bit,
                   'states': item.states,
                 };
-
                 print('  ✅ ${item.name} = $value');
               } catch (e) {
                 print('  ❌ Ошибка чтения ${item.name}: $e');
@@ -136,15 +159,18 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
             for (var group in submenu.groups!) {
               for (var item in group.items) {
                 try {
-                  final value = await modbus.readParameterValue(item);
-
+                  dynamic value;
+                  if (rtuService.connected) {
+                    value = await rtuService.readParameterValue(item);
+                  } else {
+                    value = await modbus.readParameterValue(item);
+                  }
                   data[item.name] = {
                     'value': value ?? '--',
                     'unit': item.unit ?? '',
                     'bit': item.bit,
                     'states': item.states,
                   };
-
                   print('  ✅ ${item.name} = $value');
                 } catch (e) {
                   print('  ❌ Ошибка чтения ${item.name}: $e');
@@ -165,17 +191,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
       }
 
       Navigator.pop(context);
-
       print('📊 Всего систем с данными: ${systemData.length}');
-
-      // ✅ Выводим названия систем
-      for (var entry in systemData.entries) {
-        final systemId = entry.key;
-        final systemName = systemNames[systemId] ?? systemId;
-        print(
-          '📊 Система $systemName ($systemId): ${entry.value.length} параметров',
-        );
-      }
 
       if (systemData.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -194,7 +210,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
         port: config.modbusServer.port,
         slaveId: config.modbusServer.slaveId,
         systemData: systemData,
-        systemNames: systemNames, // ✅ Передаем названия систем
+        systemNames: systemNames,
         reportTime: DateTime.now(),
       );
     } catch (e) {
@@ -229,7 +245,12 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   Widget build(BuildContext context) {
     final config = Provider.of<ConfigModel>(context);
     final modbus = Provider.of<ModbusService>(context);
+    final rtuService = Provider.of<ModbusRtuService>(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
+
+    // ✅ Определяем подключение по состоянию сервисов
+    final bool isRtu = rtuService.connected;
+    final bool isConnected = rtuService.connected || modbus.connected;
 
     return Scaffold(
       appBar: AppBar(
@@ -238,7 +259,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
         foregroundColor: Colors.white,
         elevation: 4,
         actions: [
-          // ===== ВЕРСИЯ С ДОЛГИМ НАЖАТИЕМ (В AppBar) =====
           GestureDetector(
             onLongPress: () {
               Navigator.push(
@@ -263,17 +283,13 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               ),
             ),
           ),
-          // Кнопка переключения темы
           IconButton(
             icon: Icon(
               themeProvider.isDarkMode ? Icons.light_mode : Icons.dark_mode,
             ),
-            onPressed: () {
-              themeProvider.toggleTheme();
-            },
+            onPressed: themeProvider.toggleTheme,
             tooltip: themeProvider.isDarkMode ? 'Светлая тема' : 'Темная тема',
           ),
-          // Кнопка загрузки конфигурации
           IconButton(
             icon: const Icon(Icons.cloud_download),
             onPressed: () async {
@@ -332,43 +348,54 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 10,
-                        height: 10,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _statusColor,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _statusText,
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: _statusColor,
-                        ),
-                      ),
-                      if (_connectionInfo.isNotEmpty) ...[
-                        const SizedBox(width: 8),
-                        Text(
-                          '($_connectionInfo)',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: themeProvider.isDarkMode
-                                ? Colors.grey[400]
-                                : Colors.grey,
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _statusColor,
                           ),
                         ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _statusText,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: _statusColor,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (_connectionInfo.isNotEmpty) ...[
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              '($_connectionInfo)',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: themeProvider.isDarkMode
+                                    ? Colors.grey[400]
+                                    : Colors.grey,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
                   Row(
                     children: [
-                      if (modbus.lastError.isNotEmpty && !modbus.connected)
+                      if (!isConnected)
                         Tooltip(
-                          message: modbus.lastError,
+                          message: isRtu
+                              ? rtuService.lastError
+                              : modbus.lastError,
                           child: const Icon(
                             Icons.error_outline,
                             color: Colors.orange,
@@ -388,7 +415,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                 ],
               ),
             ),
-
             // Заголовок
             Container(
               padding: const EdgeInsets.symmetric(vertical: 20),
@@ -403,7 +429,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                 ),
               ),
             ),
-
             // Список систем
             Expanded(
               child: ListView(
@@ -460,7 +485,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                       ),
                     );
                   }).toList(),
-
                   // Кнопка подключения
                   Card(
                     elevation: 4,
@@ -488,14 +512,12 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                         ),
                       ),
                       subtitle: Text(
-                        modbus.connected
-                            ? 'Подключено'
+                        isConnected
+                            ? (isRtu ? 'Подключено по USB' : 'Подключено')
                             : 'Требуется подключение',
                         style: TextStyle(
                           fontSize: 12,
-                          color: modbus.connected
-                              ? Colors.green
-                              : Colors.orange,
+                          color: isConnected ? Colors.green : Colors.orange,
                         ),
                       ),
                       trailing: Icon(
@@ -509,8 +531,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                       },
                     ),
                   ),
-
-                  // ✅ ========== КНОПКА "СОЗДАТЬ ОТЧЕТ" ==========
+                  // Кнопка "Создать отчет"
                   Card(
                     elevation: 4,
                     margin: const EdgeInsets.only(bottom: 12),
@@ -534,14 +555,10 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                         ),
                       ),
                       subtitle: Text(
-                        modbus.connected
-                            ? 'Экспорт в PDF'
-                            : 'Требуется подключение',
+                        isConnected ? 'Экспорт в PDF' : 'Требуется подключение',
                         style: TextStyle(
                           fontSize: 12,
-                          color: modbus.connected
-                              ? Colors.green
-                              : Colors.orange,
+                          color: isConnected ? Colors.green : Colors.orange,
                         ),
                       ),
                       trailing: Icon(
@@ -550,15 +567,10 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                             ? Colors.grey[400]
                             : Colors.red,
                       ),
-                      onTap: modbus.connected
-                          ? () {
-                              _createReport(context);
-                            }
-                          : null,
+                      onTap: isConnected ? () => _createReport(context) : null,
                     ),
                   ),
-
-                  // ✅ ========== НОВАЯ КНОПКА "ТРЕНДЫ" ==========
+                  // Кнопка "Тренды"
                   Card(
                     elevation: 4,
                     margin: const EdgeInsets.only(bottom: 12),
@@ -582,14 +594,12 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                         ),
                       ),
                       subtitle: Text(
-                        modbus.connected
+                        isConnected
                             ? 'Графики датчиков'
                             : 'Требуется подключение',
                         style: TextStyle(
                           fontSize: 12,
-                          color: modbus.connected
-                              ? Colors.green
-                              : Colors.orange,
+                          color: isConnected ? Colors.green : Colors.orange,
                         ),
                       ),
                       trailing: Icon(
@@ -598,7 +608,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                             ? Colors.grey[400]
                             : Colors.purple,
                       ),
-                      onTap: modbus.connected
+                      onTap: isConnected
                           ? () {
                               Navigator.push(
                                 context,
@@ -610,33 +620,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                           : null,
                     ),
                   ),
-
-                  // ✅ Информация о версии с долгим нажатием
-                  // Padding(
-                  //   padding: const EdgeInsets.only(top: 20, bottom: 10),
-                  //   child: Center(
-                  //     child: GestureDetector(
-                  //       onLongPress: () {
-                  //         // Переход на экран логов
-                  //         Navigator.push(
-                  //           context,
-                  //           MaterialPageRoute(
-                  //             builder: (context) => const LogScreen(),
-                  //           ),
-                  //         );
-                  //       },
-                  //       child: Text(
-                  //         'PR200 v1.0.4',
-                  //         style: TextStyle(
-                  //           fontSize: 12,
-                  //           color: themeProvider.isDarkMode
-                  //               ? Colors.grey[600]
-                  //               : Colors.grey[400],
-                  //         ),
-                  //       ),
-                  //     ),
-                  //   ),
-                  // ),
                 ],
               ),
             ),
@@ -648,8 +631,10 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
 
   void _showDebugInfo(BuildContext context) {
     final modbus = Provider.of<ModbusService>(context, listen: false);
+    final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
     final config = Provider.of<ConfigModel>(context, listen: false);
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final bool isRtu = rtuService.connected;
 
     showDialog(
       context: context,
@@ -664,28 +649,43 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              _buildDebugRow('Тип подключения', isRtu ? 'RTU (USB)' : 'TCP/IP'),
               _buildDebugRow(
                 'Статус',
-                modbus.connected ? 'Подключено' : 'Не подключено',
+                isRtu
+                    ? (rtuService.connected ? 'Подключено' : 'Не подключено')
+                    : (modbus.connected ? 'Подключено' : 'Не подключено'),
               ),
               const Divider(),
-              _buildDebugRow('IP', config.modbusServer.ip),
-              _buildDebugRow('Порт', config.modbusServer.port.toString()),
-              _buildDebugRow(
-                'Slave ID',
-                config.modbusServer.slaveId.toString(),
-              ),
+              if (isRtu) ...[
+                _buildDebugRow('Порт', rtuService.portName),
+                _buildDebugRow('Скорость', '${rtuService.baudRate} bps'),
+                _buildDebugRow('Slave ID', rtuService.slaveId.toString()),
+              ] else ...[
+                _buildDebugRow('IP', config.modbusServer.ip),
+                _buildDebugRow('Порт', config.modbusServer.port.toString()),
+                _buildDebugRow(
+                  'Slave ID',
+                  config.modbusServer.slaveId.toString(),
+                ),
+              ],
               _buildDebugRow('Таймаут', '${config.modbusServer.timeout}с'),
               const Divider(),
               _buildDebugRow('Систем', config.systems.length.toString()),
               _buildDebugRow(
                 'Последняя ошибка',
-                modbus.lastError.isNotEmpty ? modbus.lastError : 'Нет',
+                isRtu
+                    ? (rtuService.lastError.isNotEmpty
+                          ? rtuService.lastError
+                          : 'Нет')
+                    : (modbus.lastError.isNotEmpty ? modbus.lastError : 'Нет'),
               ),
               const Divider(),
               _buildDebugRow(
                 'Размер кеша',
-                modbus.registerCache.length.toString(),
+                isRtu
+                    ? rtuService.registerCache.length.toString()
+                    : modbus.registerCache.length.toString(),
               ),
             ],
           ),

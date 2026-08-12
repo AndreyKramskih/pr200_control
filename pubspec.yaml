@@ -42,6 +42,13 @@ dependencies:
   http: ^1.1.0  # Добавьте эту строку
   #file_picker: ^6.1.1   # Добавьте эту строку
   #qr_code_scanner: ^1.0.1   # Добавьте эту строку
+  # Новый пакет для работы с USB
+  flutter_serial_communication: ^0.2.8
+
+  # Новая зависимость для Modbus RTU через USB
+  #usb_serial: ^0.5.2
+  # Для работы с последовательным портом (работает на Android)
+
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

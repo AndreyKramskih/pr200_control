@@ -1,21 +1,25 @@
 import 'package:flutter/material.dart';
 
 class ConfigModel {
-  final String projectName; // ✅ ДОБАВЛЯЕМ
+  final String projectName;
   final ModbusServer modbusServer;
   final Map<String, SystemConfig> systems;
   final ConnectionConfig connection;
+  //String connectionType; // ✅ Убрали final
+  //RtuConfig? rtuConfig; // ✅ Убрали final
 
   ConfigModel({
-    required this.projectName, // ✅ ДОБАВЛЯЕМ
+    required this.projectName,
     required this.modbusServer,
     required this.systems,
     required this.connection,
+    //this.connectionType = 'tcp',
+    //this.rtuConfig,
   });
 
   factory ConfigModel.fromJson(Map<String, dynamic> json) {
     return ConfigModel(
-      projectName: json['project_name']?.toString() ?? 'ИТП №1', // ✅ ДОБАВЛЯЕМ
+      projectName: json['project_name']?.toString() ?? 'ИТП №1',
       modbusServer: ModbusServer.fromJson(
         json['modbus_server'] as Map<String, dynamic>? ?? {},
       ),
@@ -23,6 +27,10 @@ class ConfigModel {
       connection: ConnectionConfig.fromJson(
         json['connection'] as Map<String, dynamic>? ?? {},
       ),
+      //connectionType: json['connection_type']?.toString() ?? 'tcp',
+      //rtuConfig: json['rtu_config'] != null
+      //? RtuConfig.fromJson(json['rtu_config'] as Map<String, dynamic>)
+      //: null,
     );
   }
 
@@ -30,7 +38,6 @@ class ConfigModel {
     Map<String, dynamic>? systemsJson,
   ) {
     if (systemsJson == null) return {};
-
     final result = <String, SystemConfig>{};
     systemsJson.forEach((key, value) {
       if (value is Map<String, dynamic>) {
@@ -41,16 +48,16 @@ class ConfigModel {
   }
 
   Map<String, dynamic> toJson() => {
-    'project_name': projectName, // ✅ ДОБАВЛЯЕМ
+    'project_name': projectName,
     'modbus_server': modbusServer.toJson(),
     'systems': systems.map((key, value) => MapEntry(key, value.toJson())),
     'connection': connection.toJson(),
+    //'connection_type': connectionType,
+    //if (rtuConfig != null) 'rtu_config': rtuConfig!.toJson(),
   };
 
-  // Метод для получения системы по ID
   SystemConfig? getSystem(String id) => systems[id];
 
-  // Метод для получения подменю
   SubmenuConfig? getSubmenu(String systemId, String submenuId) {
     final system = systems[systemId];
     return system?.submenus[submenuId];
@@ -140,7 +147,6 @@ class SystemConfig {
     Map<String, dynamic>? submenusJson,
   ) {
     if (submenusJson == null) return {};
-
     final result = <String, SubmenuConfig>{};
     submenusJson.forEach((key, value) {
       if (value is Map<String, dynamic>) {
@@ -167,7 +173,7 @@ class SubmenuConfig {
   final int? resetAddress;
   final int? resetBit;
   final List<ControlConfig>? controls;
-  final bool? analog; // <-- ДОБАВЛЯЕМ
+  final bool? analog;
 
   SubmenuConfig({
     required this.name,
@@ -179,7 +185,7 @@ class SubmenuConfig {
     this.resetAddress,
     this.resetBit,
     this.controls,
-    this.analog, // <-- ДОБАВЛЯЕМ
+    this.analog,
   });
 
   factory SubmenuConfig.fromJson(Map<String, dynamic> json) {
@@ -193,7 +199,7 @@ class SubmenuConfig {
       resetAddress: _toIntOrNull(json['reset_address']),
       resetBit: _toIntOrNull(json['reset_bit']),
       controls: _parseControls(json['controls'] as List<dynamic>?),
-      analog: json['analog'] as bool?, // <-- ДОБАВЛЯЕМ
+      analog: json['analog'] as bool?,
     );
   }
 
@@ -246,10 +252,9 @@ class SubmenuConfig {
     if (resetAddress != null) 'reset_address': resetAddress,
     if (resetBit != null) 'reset_bit': resetBit,
     if (controls != null) 'controls': controls!.map((e) => e.toJson()).toList(),
-    if (analog != null) 'analog': analog, // <-- ДОБАВЛЯЕМ
+    if (analog != null) 'analog': analog,
   };
 
-  // Проверка типа подменю
   bool get isSensors => type == 'sensors';
   bool get isRelays => type == 'relays';
   bool get isPumps => type == 'pumps';
@@ -269,12 +274,11 @@ class ItemConfig {
   final int? min;
   final int? max;
   final dynamic defaultValue;
-  // Новые поля для режима работы насоса
   final int? modeAddress;
   final List<String>? modeStates;
-  final bool? isSetpoint; // <-- Добавляем новое поле
-  final String? icon; // <-- Добавляем поле для иконк
-  final bool? readonly; // <-- ДОБАВЛЯЕМ
+  final bool? isSetpoint;
+  final String? icon;
+  final bool? readonly;
 
   ItemConfig({
     required this.name,
@@ -288,9 +292,9 @@ class ItemConfig {
     this.defaultValue,
     this.modeAddress,
     this.modeStates,
-    this.isSetpoint, // <-- Добавляем
-    this.icon, // <-- Добавляем
-    this.readonly, // <-- ДОБАВЛЯЕМ
+    this.isSetpoint,
+    this.icon,
+    this.readonly,
   });
 
   factory ItemConfig.fromJson(Map<String, dynamic> json) {
@@ -306,9 +310,9 @@ class ItemConfig {
       defaultValue: json['default'],
       modeAddress: _toIntOrNull(json['mode_address']),
       modeStates: _parseStates(json['mode_states'] as List<dynamic>?),
-      isSetpoint: json['is_setpoint'] as bool?, // <-- Добавляем
-      icon: json['icon']?.toString(), // <-- Добавляем
-      readonly: json['readonly'] as bool?, // <-- ДОБАВЛЯЕМ
+      isSetpoint: json['is_setpoint'] as bool?,
+      icon: json['icon']?.toString(),
+      readonly: json['readonly'] as bool?,
     );
   }
 
@@ -343,15 +347,13 @@ class ItemConfig {
     if (defaultValue != null) 'default': defaultValue,
     if (modeAddress != null) 'mode_address': modeAddress,
     if (modeStates != null) 'mode_states': modeStates,
-    if (isSetpoint != null) 'is_setpoint': isSetpoint, // <-- Добавляем
-    if (icon != null) 'icon': icon, // <-- Добавляем
-    if (readonly != null) 'readonly': readonly, // <-- ДОБАВЛЯЕМ
+    if (isSetpoint != null) 'is_setpoint': isSetpoint,
+    if (icon != null) 'icon': icon,
+    if (readonly != null) 'readonly': readonly,
   };
 
-  // Получить текст состояния
   String getStateText(dynamic value) {
     if (value == null) return '--';
-    // Если значение float - округляем до 1 знака
     if (value is double) {
       return value.toStringAsFixed(1);
     }
@@ -368,7 +370,6 @@ class ItemConfig {
     return value.toString();
   }
 
-  // Получить цвет состояния
   Color getStateColor(dynamic value) {
     if (value == null) return Colors.grey;
     if (bit != null && value is int) {
@@ -378,7 +379,6 @@ class ItemConfig {
     return Colors.black87;
   }
 
-  // Проверить валидность значения
   bool isValidValue(dynamic value) {
     if (value == null) return false;
     if (min != null && max != null) {
@@ -495,5 +495,40 @@ class ControlConfig {
     'address': address,
     'value': value,
     'type': type,
+  };
+}
+
+// ✅ Добавляем класс RtuConfig в конец файла
+class RtuConfig {
+  final int baudRate;
+  final int dataBits;
+  final int stopBits;
+  final String parity;
+  final String? portName; // ✅ Добавляем поле для порта
+
+  RtuConfig({
+    this.baudRate = 9600,
+    this.dataBits = 8,
+    this.stopBits = 1,
+    this.parity = 'none',
+    this.portName,
+  });
+
+  factory RtuConfig.fromJson(Map<String, dynamic> json) {
+    return RtuConfig(
+      baudRate: json['baud_rate'] as int? ?? 9600,
+      dataBits: json['data_bits'] as int? ?? 8,
+      stopBits: json['stop_bits'] as int? ?? 1,
+      parity: json['parity']?.toString() ?? 'none',
+      portName: json['port_name']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'baud_rate': baudRate,
+    'data_bits': dataBits,
+    'stop_bits': stopBits,
+    'parity': parity,
+    if (portName != null) 'port_name': portName,
   };
 }

@@ -4,18 +4,15 @@ import 'package:provider/provider.dart';
 import 'models/config_model.dart';
 import 'providers/theme_provider.dart';
 import 'services/modbus_service.dart';
+import 'services/modbus_rtu_service.dart';
 import 'services/config_service.dart';
-import 'services/config_manager.dart'; // ✅ ДОБАВИТЬ ИМПОРТ
+import 'services/config_manager.dart';
 import 'screens/main_menu_screen.dart';
 import 'screens/system_screen.dart';
 import 'screens/connection_screen.dart';
 import 'screens/submenu_screens.dart';
 import 'screens/load_config_screen.dart';
-
-// ✅ Добавляем импорт логгера
 import 'services/logger_service.dart';
-
-//test new connect//
 
 void main() {
   runApp(const MyApp());
@@ -31,6 +28,7 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   ConfigModel? _config;
   late ModbusService _modbusService;
+  late ModbusRtuService _modbusRtuService;
   final ThemeProvider _themeProvider = ThemeProvider();
   bool _isLoading = true;
 
@@ -38,51 +36,38 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
     _modbusService = ModbusService();
+    _modbusRtuService = ModbusRtuService();
     _loadConfig();
-
-    // ✅ Инициализируем сервис логов
     _initLogger();
   }
 
-  // ✅ Инициализация логгера
   Future<void> _initLogger() async {
     await LoggerService().init();
     LoggerService().log('🚀 Приложение запущено');
   }
 
-  // ==================== ЗАГРУЗКА КОНФИГУРАЦИИ ====================
   Future<void> _loadConfig() async {
     final configService = ConfigService();
 
     try {
-      // ✅ 1. ПРОВЕРЯЕМ, ЕСТЬ ЛИ АКТИВНЫЙ КОНФИГ
       final activeConfigName = await ConfigManager.getActiveConfig();
       ConfigModel? config;
 
       if (activeConfigName != null) {
         LoggerService().log('📂 Загрузка активного конфига: $activeConfigName');
-        //print('📂 Загрузка активного конфига: $activeConfigName');
         config = await ConfigManager.loadConfig(activeConfigName);
         if (config != null) {
           LoggerService().log('✅ Активный конфиг загружен: $activeConfigName');
-          //print('✅ Активный конфиг загружен: $activeConfigName');
         } else {
           LoggerService().log(
             '⚠️ Активный конфиг не найден, загружаем стандартный',
             level: LogLevel.warning,
           );
-          LoggerService().log(
-            '⚠️ Активный конфиг не найден, загружаем стандартный',
-            level: LogLevel.warning,
-          );
-          //print('⚠️ Активный конфиг не найден, загружаем стандартный');
         }
       }
 
-      // ✅ 2. ЕСЛИ АКТИВНОГО НЕТ — ЗАГРУЖАЕМ СТАНДАРТНЫЙ
       if (config == null) {
         LoggerService().log('📂 Загрузка стандартного конфига');
-        //print('📂 Загрузка стандартного конфига');
         config = await configService.loadConfig();
       }
 
@@ -93,14 +78,13 @@ class _MyAppState extends State<MyApp> {
         });
       }
 
-      // ✅ 3. АВТОПОДКЛЮЧЕНИЕ
-      _autoConnect();
+      // Автоподключение по TCP (только для TCP, RTU подключается вручную)
+      await _autoConnectTCP();
     } catch (e) {
       LoggerService().log(
         '❌ Ошибка загрузки конфига: $e',
         level: LogLevel.error,
       );
-      //print('❌ Ошибка загрузки конфига: $e');
       if (mounted) {
         setState(() {
           _isLoading = false;
@@ -109,11 +93,12 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  void _autoConnect() async {
+  // Только TCP автоподключение
+  Future<void> _autoConnectTCP() async {
     if (_config == null) return;
+
     try {
-      // ✅ Сохраняем результат подключения
-      bool success = await _modbusService.connect(
+      final success = await _modbusService.connect(
         _config!.modbusServer.ip,
         port: _config!.modbusServer.port,
         slaveId: _config!.modbusServer.slaveId,
@@ -121,25 +106,21 @@ class _MyAppState extends State<MyApp> {
       );
 
       if (success) {
-        LoggerService().log('✅ Автоподключение успешно');
-        //print('✅ Автоподключение успешно');
+        LoggerService().log('✅ TCP автоподключение успешно');
       } else {
         LoggerService().log(
-          '⚠️ Автоподключение не удалось: ${_modbusService.lastError}',
+          '⚠️ TCP автоподключение не удалось: ${_modbusService.lastError}',
           level: LogLevel.warning,
         );
-        //print('⚠️ Автоподключение не удалось: ${_modbusService.lastError}');
       }
     } catch (e) {
       LoggerService().log(
         '⚠️ Автоподключение не удалось: $e',
         level: LogLevel.warning,
       );
-      //print('⚠️ Автоподключение не удалось: $e');
     }
   }
 
-  // ==================== ПЕРЕЗАГРУЗКА КОНФИГА ====================
   Future<void> _reloadConfig() async {
     setState(() {
       _isLoading = true;
@@ -189,6 +170,9 @@ class _MyAppState extends State<MyApp> {
       providers: [
         Provider<ConfigModel>.value(value: _config!),
         ChangeNotifierProvider<ModbusService>.value(value: _modbusService),
+        ChangeNotifierProvider<ModbusRtuService>.value(
+          value: _modbusRtuService,
+        ),
         ChangeNotifierProvider<ThemeProvider>.value(value: _themeProvider),
       ],
       child: Consumer<ThemeProvider>(
@@ -237,7 +221,6 @@ class _MyAppState extends State<MyApp> {
     );
   }
 
-  // ==================== ТЕМЫ ====================
   ThemeData _buildLightTheme() {
     return ThemeData(
       useMaterial3: true,

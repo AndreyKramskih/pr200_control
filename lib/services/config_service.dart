@@ -6,14 +6,10 @@ import '../models/config_model.dart';
 class ConfigService {
   static const String configFileName = 'config.json';
 
-  // Получаем путь к директории приложения
   Future<String> _getAppDirectory() async {
-    // Для Android используем внешнее хранилище
     if (Platform.isAndroid) {
-      // Пробуем получить доступ к внешнему хранилищу
       final externalDir =
           '/storage/emulated/0/Android/data/com.example.pr200_control/files';
-      // Проверяем, можем ли создать папку
       try {
         final dir = Directory(externalDir);
         if (!await dir.exists()) {
@@ -22,7 +18,6 @@ class ConfigService {
         return externalDir;
       } catch (e) {
         print('⚠️ Не удалось создать папку в $externalDir: $e');
-        // Если не получилось - используем внутреннее хранилище приложения
         return '/data/data/com.example.pr200_control/files';
       }
     } else if (Platform.isIOS) {
@@ -32,7 +27,6 @@ class ConfigService {
     }
   }
 
-  // Загрузка конфигурации
   Future<ConfigModel> loadConfig() async {
     try {
       final appDir = await _getAppDirectory();
@@ -65,7 +59,6 @@ class ConfigService {
     }
   }
 
-  // Загрузка из assets
   Future<ConfigModel?> _loadAssetConfig() async {
     try {
       final content = await rootBundle.loadString('assets/config.json');
@@ -78,7 +71,6 @@ class ConfigService {
     }
   }
 
-  // Сохранение в локальное хранилище
   Future<void> _saveLocalConfig(ConfigModel config) async {
     try {
       final appDir = await _getAppDirectory();
@@ -94,18 +86,16 @@ class ConfigService {
       print('✅ Конфиг сохранен: ${file.path}');
     } catch (e) {
       print('❌ Ошибка сохранения конфига: $e');
-      // Не перевыбрасываем ошибку, чтобы приложение продолжало работать
     }
   }
 
-  // ✅ МЕСТО 1: Создание конфига по умолчанию (добавляем projectName)
   ConfigModel _createDefaultConfig() {
     return ConfigModel(
-      projectName: 'ИТП №1', // ✅ ДОБАВЛЯЕМ
+      projectName: 'ИТП №1',
       modbusServer: ModbusServer(
-        ip: '192.168.1.100',
+        ip: '192.168.101.250',
         port: 502,
-        slaveId: 1,
+        slaveId: 16,
         timeout: 3,
         retries: 3,
       ),
@@ -133,52 +123,6 @@ class ConfigService {
                 ),
               ],
             ),
-            'settings': SubmenuConfig(
-              name: 'Настройки',
-              icon: '⚙️',
-              type: 'settings',
-              groups: [
-                GroupConfig(
-                  name: 'Основные параметры',
-                  items: [
-                    ItemConfig(
-                      name: 'Параметр 1',
-                      address: 500,
-                      type: 'int',
-                      unit: '%',
-                      min: 0,
-                      max: 100,
-                      defaultValue: 50,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          },
-        ),
-        'system2': SystemConfig(
-          name: 'Вентиляция',
-          icon: '💨',
-          submenus: {
-            'sensors': SubmenuConfig(
-              name: 'Датчики',
-              icon: '🌡️',
-              type: 'sensors',
-              items: [
-                ItemConfig(
-                  name: 'Температура притока',
-                  address: 2000,
-                  type: 'float',
-                  unit: '°C',
-                ),
-                ItemConfig(
-                  name: 'Температура вытяжки',
-                  address: 2002,
-                  type: 'float',
-                  unit: '°C',
-                ),
-              ],
-            ),
           },
         ),
       },
@@ -189,12 +133,10 @@ class ConfigService {
     );
   }
 
-  // ✅ МЕСТО 2: Сохранение конфига (публичный метод) - без изменений
   Future<void> saveConfig(ConfigModel config) async {
     await _saveLocalConfig(config);
   }
 
-  // Проверка существования конфига
   Future<bool> configExists() async {
     try {
       final appDir = await _getAppDirectory();
@@ -205,7 +147,6 @@ class ConfigService {
     }
   }
 
-  // Получение пути к конфигу
   Future<String> getConfigPath() async {
     final appDir = await _getAppDirectory();
     return '$appDir/$configFileName';

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Фильтр для USB-to-Serial устройств -->
+    <usb-device
+        class="2"
+        subclass="2"
+        protocol="1" />
+
+    <!-- CH340 (китайские USB-to-Serial) -->
+    <usb-device vendor-id="6790" product-id="29987" />
+
+    <!-- FTDI -->
+    <usb-device vendor-id="1027" product-id="24577" />
+    <usb-device vendor-id="1027" product-id="24592" />
+    <usb-device vendor-id="1027" product-id="24593" />
+
+    <!-- CP210x (Silicon Labs) -->
+    <usb-device vendor-id="4292" product-id="60000" />
+
+    <!-- Произвольные USB устройства (разрешаем все) -->
+    <usb-device />
+</resources>
