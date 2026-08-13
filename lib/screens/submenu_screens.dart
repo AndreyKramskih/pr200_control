@@ -216,6 +216,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       if (intAddresses.isNotEmpty) {
         final intResults = await modbusManager.readMultipleRegisters(
           intAddresses,
+          // useCache: true,  // ✅ Раскомментировать для включения кеша
         );
         for (final entry in intResults.entries) {
           newData['${entry.key}'] = entry.value;
@@ -225,6 +226,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       if (floatAddresses.isNotEmpty) {
         final floatResults = await modbusManager.readMultipleFloats(
           floatAddresses,
+          // useCache: true,  // ✅ Раскомментировать для включения кеша
         );
         for (final entry in floatResults.entries) {
           newData['${entry.key}'] = entry.value;
@@ -259,6 +261,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
         try {
           final regValue = await modbusManager.readRegister(address);
+          // useCache: true,  // ✅ Раскомментировать для включения кеша
 
           if (regValue != null) {
             for (final alarm in alarmsForAddress) {
@@ -340,6 +343,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       if (intAddresses.isNotEmpty) {
         final intResults = await modbusManager.readMultipleRegisters(
           intAddresses,
+          // useCache: true,  // ✅ Раскомментировать для включения кеша
         );
         for (final entry in intResults.entries) {
           newData['${entry.key}'] = entry.value;
@@ -349,6 +353,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       if (floatAddresses.isNotEmpty) {
         final floatResults = await modbusManager.readMultipleFloats(
           floatAddresses,
+          // useCache: true,  // ✅ Раскомментировать для включения кеша
         );
         for (final entry in floatResults.entries) {
           newData['${entry.key}'] = entry.value;
@@ -394,6 +399,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
         try {
           final regValue = await modbusManager.readRegister(address);
+          // useCache: true,  // ✅ Раскомментировать для включения кеша
 
           if (regValue != null) {
             for (final alarm in alarmsForAddress) {
@@ -453,6 +459,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
     for (final item in submenu.items!) {
       if (item.modeAddress != null) {
         final value = await modbusManager.readRegister(item.modeAddress!);
+        // useCache: true,  // ✅ Раскомментировать для включения кеша
         LoggerService().log(
           '📊 Режим "${item.name}" (адрес ${item.modeAddress}) = $value',
         );
@@ -508,6 +515,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
     if (intAddresses.isNotEmpty) {
       final intResults = await modbusManager.readMultipleRegisters(
         intAddresses,
+        // useCache: true,  // ✅ Раскомментировать для включения кеша
       );
       for (final entry in intResults.entries) {
         final item = addressToItem[entry.key];
@@ -521,6 +529,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
     if (floatAddresses.isNotEmpty) {
       final floatResults = await modbusManager.readMultipleFloats(
         floatAddresses,
+        // useCache: true,  // ✅ Раскомментировать для включения кеша
       );
       for (final entry in floatResults.entries) {
         final item = addressToItem[entry.key];
@@ -610,8 +619,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
   // ==================== СОХРАНЕНИЕ НАСТРОЕК ====================
 
-  // ==================== СОХРАНЕНИЕ НАСТРОЕК ====================
-
   Future<void> _saveAllSettings() async {
     if (!mounted) return;
 
@@ -640,11 +647,13 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
             dynamic currentValue;
             if (item.type == 'float') {
               currentValue = await modbusManager.readFloat(item.address);
+              // useCache: true,  // ✅ Раскомментировать для включения кеша
             } else {
               currentValue = await modbusManager.readRegister(
                 item.address,
                 type: item.type,
               );
+              // useCache: true,  // ✅ Раскомментировать для включения кеша
             }
 
             if (currentValue != null && newValue != currentValue) {
@@ -759,6 +768,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
     }
     return null;
   }
+
   // ==================== КЛАПАН ====================
 
   Future<void> _switchValveMode() async {
@@ -788,6 +798,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
     try {
       final currentValue = await modbusManager.readRegister(modeItem.address);
+      // useCache: true,  // ✅ Раскомментировать для включения кеша
       if (currentValue == null) {
         if (mounted) _showError('Не удалось прочитать текущий режим');
         return;
@@ -927,6 +938,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
       // 1. Читаем текущее значение
       final currentValue = await modbusManager.readRegister(resetAddress);
+      // useCache: true,  // ✅ Раскомментировать для включения кеша
       if (currentValue == null) {
         _showError('Не удалось прочитать статус');
         return;
@@ -1037,6 +1049,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       if (mounted) _showError('Ошибка: $e');
     }
   }
+
   // ==================== ПАРАМЕТРЫ (НАСТРОЙКИ) ====================
 
   void _onParamChanged(ItemConfig item, dynamic newValue) {
@@ -1083,11 +1096,13 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
     dynamic loadedValue;
     if (item.type == 'float') {
       loadedValue = await modbusManager.readFloat(item.address);
+      // useCache: true,  // ✅ Раскомментировать для включения кеша
     } else {
       loadedValue = await modbusManager.readRegister(
         item.address,
         type: item.type,
       );
+      // useCache: true,  // ✅ Раскомментировать для включения кеша
     }
     if (loadedValue != null && mounted) {
       setState(() {
