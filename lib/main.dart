@@ -1,5 +1,9 @@
 // lib/main.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'dart:async';
+import 'dart:ui' as ui;
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:provider/provider.dart';
 import 'models/config_model.dart';
 import 'providers/theme_provider.dart';
@@ -14,7 +18,41 @@ import 'screens/load_config_screen.dart';
 import 'services/logger_service.dart';
 
 void main() {
-  runApp(const MyApp());
+  runZonedGuarded(
+    () {
+      WidgetsFlutterBinding.ensureInitialized();
+
+      // ✅ Обработчик ошибок Flutter
+      FlutterError.onError = (FlutterErrorDetails details) {
+        FlutterError.dumpErrorToConsole(details);
+        LoggerService().log(
+          '🔥 Flutter ошибка: ${details.exception}',
+          level: LogLevel.error,
+        );
+        if (kDebugMode) {
+          // В debug режиме ошибка уже показана
+        }
+      };
+
+      // ✅ Обработчик ошибок платформы
+      ui.PlatformDispatcher.instance.onError = (error, stack) {
+        LoggerService().log(
+          '🔥 Platform ошибка: $error\nСтек: $stack',
+          level: LogLevel.error,
+        );
+        return true;
+      };
+
+      runApp(const MyApp());
+    },
+    (error, stack) {
+      // ✅ Необработанные ошибки
+      LoggerService().log(
+        '🔥 Необработанная ошибка: $error\nСтек: $stack',
+        level: LogLevel.error,
+      );
+    },
+  );
 }
 
 class MyApp extends StatefulWidget {
