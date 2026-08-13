@@ -96,19 +96,23 @@ class ModbusManager {
   }
 
   // Групповая запись
+
   Future<bool> writeMultipleRegisters(
     Map<int, dynamic> values, {
     String type = 'int',
   }) async {
-    // ✅ Проверяем, что сервис существует
     final service = _activeService;
-    if (service == null) {
-      return false;
+
+    // ✅ Приводим результат к bool
+    final result = await service.writeMultipleRegisters(values, type: type);
+
+    // Если результат Map<int, bool> - проверяем все значения
+    if (result is Map<int, bool>) {
+      return result.values.every((v) => v == true);
     }
 
-    // ✅ Явно вызываем метод и возвращаем Future<bool>
-    return await service.writeMultipleRegisters(values, type: type)
-        as Future<bool>;
+    // Если результат bool - возвращаем как есть
+    return result as bool;
   }
 
   // Аварии

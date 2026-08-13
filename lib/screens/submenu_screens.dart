@@ -5,12 +5,15 @@ import 'dart:async';
 import '../models/config_model.dart';
 import '../models/modbus_data.dart';
 import '../services/modbus_manager.dart';
-import '../widgets/sensor_widget.dart';
-import '../widgets/relay_widget.dart';
-import '../widgets/pump_widget.dart';
-import '../widgets/parameter_widget.dart';
 import '../services/logger_service.dart';
 import '../services/modbus_rtu_service.dart';
+import '../widgets/sensors_list_widget.dart';
+import '../widgets/relays_list_widget.dart';
+import '../widgets/pumps_list_widget.dart';
+import '../widgets/alarms_widget.dart';
+import '../widgets/valve_widget.dart';
+import '../widgets/start_stop_widget.dart';
+import '../widgets/settings_widget.dart';
 
 class SubmenuScreen extends StatefulWidget {
   final String systemId;
@@ -29,6 +32,7 @@ class SubmenuScreen extends StatefulWidget {
 class _SubmenuScreenState extends State<SubmenuScreen> {
   bool _isLoading = false;
   bool _isDropdownOpen = false;
+  bool _isResettingAlarms = false;
 
   // Данные для реального времени (датчики, реле, статусы)
   final Map<String, dynamic> _realtimeData = {};
@@ -92,7 +96,13 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   void _startAutoUpdate() {
     _updateTimer?.cancel();
     _updateTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_isDropdownOpen) {
+      // ✅ Проверяем, что виджет еще активен
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+
+      if (_isDropdownOpen || _isResettingAlarms) {
         return;
       }
 
@@ -108,13 +118,14 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
         // Игнорируем
       }
 
-      if (mounted && !_isLoading) {
+      if (!_isLoading) {
         _updateRealtimeData();
       }
     });
   }
 
   void _onDropdownOpen() {
+    if (!mounted) return;
     if (!_isDropdownOpen) {
       setState(() {
         _isDropdownOpen = true;
@@ -123,11 +134,21 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   }
 
   void _onDropdownClose() {
+    if (!mounted) return;
     if (_isDropdownOpen) {
       setState(() {
         _isDropdownOpen = false;
       });
-      _updateRealtimeData();
+      // Не вызываем _updateRealtimeData() здесь,
+      // так как это делается в таймере после закрытия
+    }
+  }
+
+  void _onModeChanged(int address, int newValue) {
+    if (mounted) {
+      setState(() {
+        _modeData[address.toString()] = newValue;
+      });
     }
   }
 
@@ -221,7 +242,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       );
     }
 
-    // ✅ ЧТЕНИЕ АВАРИЙ
+    // ЧТЕНИЕ АВАРИЙ
     if (submenu.type == 'alarms' &&
         submenu.alarms != null &&
         submenu.alarms!.isNotEmpty) {
@@ -278,7 +299,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   Future<void> _updateRealtimeData() async {
     if (!mounted) return;
 
-    if (_isDropdownOpen) {
+    if (_isDropdownOpen || _isResettingAlarms) {
       return;
     }
 
@@ -356,7 +377,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       }
     }
 
-    // ✅ Обновление аварий
+    // Обновление аварий
     if (submenu.type == 'alarms' &&
         submenu.alarms != null &&
         submenu.alarms!.isNotEmpty) {
@@ -589,6 +610,8 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
   // ==================== СОХРАНЕНИЕ НАСТРОЕК ====================
 
+  // ==================== СОХРАНЕНИЕ НАСТРОЕК ====================
+
   Future<void> _saveAllSettings() async {
     if (!mounted) return;
 
@@ -736,6 +759,381 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
     }
     return null;
   }
+  // ==================== КЛАПАН ====================
+
+  Future<void> _switchValveMode() async {
+    if (!mounted) return;
+
+    final config = Provider.of<ConfigModel>(context, listen: false);
+    final system = config.getSystem(widget.systemId);
+    if (system == null) return;
+    final submenu = system.submenus[widget.submenuId];
+    if (submenu == null) return;
+
+    ItemConfig? modeItem;
+    if (submenu.items != null) {
+      for (final item in submenu.items!) {
+        if (item.name.contains('Режим работы')) {
+          modeItem = item;
+          break;
+        }
+      }
+    }
+    if (modeItem == null) return;
+
+    // ✅ Приостанавливаем автообновление
+    _updateTimer?.cancel();
+
+    final modbusManager = ModbusManager(context);
+
+    try {
+      final currentValue = await modbusManager.readRegister(modeItem.address);
+      if (currentValue == null) {
+        if (mounted) _showError('Не удалось прочитать текущий режим');
+        return;
+      }
+
+      final isManual = (currentValue & (1 << (modeItem.bit ?? 0))) != 0;
+      final newValue = isManual
+          ? currentValue & ~(1 << (modeItem.bit ?? 0))
+          : currentValue | (1 << (modeItem.bit ?? 0));
+
+      final success = await modbusManager.writeRegister(
+        modeItem.address,
+        newValue,
+      );
+
+      if (success && mounted) {
+        _showSuccess(
+          isManual ? 'Режим переключен на АВТО' : 'Режим переключен на РУЧНОЙ',
+        );
+        // ✅ Обновляем данные после записи
+        await _loadRealtimeData(submenu);
+      } else if (mounted) {
+        _showError('Не удалось переключить режим');
+      }
+    } catch (e) {
+      LoggerService().log(
+        '❌ Ошибка переключения режима клапана: $e',
+        level: LogLevel.error,
+      );
+      if (mounted) _showError('Ошибка: $e');
+    } finally {
+      // ✅ Возобновляем автообновление (только если это realtime тип)
+      if (_isRealtimeType && mounted) {
+        _startAutoUpdate();
+      }
+    }
+  }
+
+  Future<void> _sendValveCommand(int address, int value) async {
+    if (!mounted) return;
+
+    final modbusManager = ModbusManager(context);
+    final success = await modbusManager.writeRegister(address, value);
+    if (mounted) {
+      if (success) {
+        _showSuccess('Команда отправлена');
+        await _updateRealtimeData();
+      } else {
+        _showError('Ошибка отправки команды');
+      }
+    }
+  }
+
+  void _onSetSetpoint(int address, dynamic value) {
+    if (mounted) {
+      setState(() {
+        _settingsData[address.toString()] = value;
+      });
+    }
+  }
+
+  // ==================== АВАРИИ ====================
+
+  Future<void> _resetAlarms() async {
+    if (!mounted) return;
+
+    final config = Provider.of<ConfigModel>(context, listen: false);
+    final system = config.getSystem(widget.systemId);
+    if (system == null) return;
+    final submenu = system.submenus[widget.submenuId];
+    if (submenu == null) return;
+
+    if (submenu.resetAddress == null) return;
+
+    final modbusManager = ModbusManager(context);
+
+    if (!modbusManager.connected) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Нет подключения к контроллеру'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Сброс аварий'),
+        content: const Text(
+          'Вы уверены, что хотите сбросить все активные аварии?\n\n'
+          '⚠️ Сброс возможен только если причина аварии устранена.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Сбросить'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    final resetAddress = submenu.resetAddress!;
+    final resetBit = submenu.resetBit ?? 3;
+
+    // Останавливаем таймер на время сброса
+    _updateTimer?.cancel();
+    setState(() {
+      _isResettingAlarms = true;
+      _isLoading = true;
+    });
+
+    try {
+      LoggerService().log(
+        '🔄 Сброс аварий: адрес=$resetAddress, бит=$resetBit',
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⏳ Сброс аварий...'),
+          duration: Duration(seconds: 1),
+        ),
+      );
+
+      // 1. Читаем текущее значение
+      final currentValue = await modbusManager.readRegister(resetAddress);
+      if (currentValue == null) {
+        _showError('Не удалось прочитать статус');
+        return;
+      }
+
+      // 2. Устанавливаем бит сброса
+      final valueWithReset = currentValue | (1 << resetBit);
+      LoggerService().log(
+        '🔧 Устанавливаем бит $resetBit: $currentValue → $valueWithReset',
+      );
+
+      final success1 = await modbusManager.writeRegister(
+        resetAddress,
+        valueWithReset,
+      );
+      if (!success1) {
+        _showError('Ошибка установки бита сброса');
+        return;
+      }
+
+      // 3. Ждем, пока ПЛК обработает
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      // 4. Снимаем бит сброса
+      final valueAfterReset = valueWithReset & ~(1 << resetBit);
+      LoggerService().log(
+        '🔧 Снимаем бит $resetBit: $valueWithReset → $valueAfterReset',
+      );
+
+      final success2 = await modbusManager.writeRegister(
+        resetAddress,
+        valueAfterReset,
+      );
+      if (!success2) {
+        _showError('Ошибка снятия бита сброса');
+        return;
+      }
+
+      // 5. Ждем, пока ПЛК применит изменения
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // 6. Обновляем список аварий
+      await _loadRealtimeData(submenu);
+
+      // 7. Проверяем результат
+      if (_alarms.isEmpty) {
+        _showSuccess('✅ Все аварии сброшены!');
+      } else {
+        _showWarning(
+          '⚠️ Остались активные аварии: ${_alarms.map((a) => a.name).join(", ")}\n'
+          'Устраните причину и повторите сброс.',
+        );
+      }
+    } catch (e) {
+      LoggerService().log('❌ Ошибка сброса аварий: $e', level: LogLevel.error);
+      _showError('Ошибка сброса аварий: $e');
+    } finally {
+      // Возобновляем таймер
+      setState(() {
+        _isResettingAlarms = false;
+        _isLoading = false;
+      });
+      if (_isRealtimeType && mounted) {
+        _startAutoUpdate();
+      }
+    }
+  }
+
+  // ==================== СТАРТ/СТОП ====================
+
+  Future<void> _toggleStartStop() async {
+    if (!mounted) return;
+
+    final config = Provider.of<ConfigModel>(context, listen: false);
+    final system = config.getSystem(widget.systemId);
+    if (system == null) return;
+    final submenu = system.submenus[widget.submenuId];
+    if (submenu == null) return;
+    if (submenu.items == null || submenu.items!.isEmpty) return;
+
+    final item = submenu.items!.first;
+    final currentValue = _realtimeData[item.address.toString()] ?? 0;
+    final isOn = (currentValue & (1 << (item.bit ?? 0))) != 0;
+
+    final newRegister = isOn
+        ? currentValue & ~(1 << (item.bit ?? 0))
+        : currentValue | (1 << (item.bit ?? 0));
+
+    final modbusManager = ModbusManager(context);
+
+    try {
+      final success = await modbusManager.writeRegister(
+        item.address,
+        newRegister,
+      );
+
+      if (mounted) {
+        if (success) {
+          _showSuccess(isOn ? 'Выключено' : 'Включено');
+          // ✅ Обновляем данные после записи
+          await _loadRealtimeData(submenu);
+        } else {
+          _showError('Ошибка изменения состояния');
+        }
+      }
+    } catch (e) {
+      LoggerService().log('❌ Ошибка старт/стоп: $e', level: LogLevel.error);
+      if (mounted) _showError('Ошибка: $e');
+    }
+  }
+  // ==================== ПАРАМЕТРЫ (НАСТРОЙКИ) ====================
+
+  void _onParamChanged(ItemConfig item, dynamic newValue) {
+    if (mounted) {
+      setState(() {
+        _settingsData[item.address.toString()] = newValue;
+      });
+    }
+  }
+
+  Future<void> _onParamSave(ItemConfig item, dynamic newValue) async {
+    if (!mounted) return;
+
+    final modbusManager = ModbusManager(context);
+    LoggerService().log(
+      '🔵 Сохранение: ${item.name} = $newValue в адрес ${item.address}',
+    );
+
+    final success = await modbusManager.writeRegister(
+      item.address,
+      newValue,
+      type: item.type,
+    );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success ? 'Параметр сохранен' : 'Ошибка сохранения'),
+          backgroundColor: success ? Colors.green : Colors.red,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+
+    if (success && mounted) {
+      await _reloadSettings();
+    }
+  }
+
+  Future<dynamic> _onParamLoad(ItemConfig item) async {
+    if (!mounted) return null;
+
+    final modbusManager = ModbusManager(context);
+    dynamic loadedValue;
+    if (item.type == 'float') {
+      loadedValue = await modbusManager.readFloat(item.address);
+    } else {
+      loadedValue = await modbusManager.readRegister(
+        item.address,
+        type: item.type,
+      );
+    }
+    if (loadedValue != null && mounted) {
+      setState(() {
+        _settingsData[item.address.toString()] = loadedValue;
+      });
+    }
+    return loadedValue;
+  }
+
+  // ==================== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ====================
+
+  void _showSuccess(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  void _showError(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  void _showWarning(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    }
+  }
 
   // ==================== BUILD ====================
 
@@ -819,1153 +1217,52 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   Widget _buildContent(SubmenuConfig submenu) {
     switch (submenu.type) {
       case 'sensors':
-        return _buildSensors(submenu);
+        return SensorsListWidget(submenu: submenu, realtimeData: _realtimeData);
       case 'relays':
-        return _buildRelays(submenu);
+        return RelaysListWidget(submenu: submenu, realtimeData: _realtimeData);
       case 'pumps':
-        return _buildPumps(submenu);
+        return PumpsListWidget(
+          submenu: submenu,
+          realtimeData: _realtimeData,
+          modeData: _modeData,
+          onDropdownOpen: _onDropdownOpen,
+          onDropdownClose: _onDropdownClose,
+          onModeChanged: _onModeChanged,
+        );
       case 'valve':
-        return _buildValve(submenu);
+        return ValveWidget(
+          submenu: submenu,
+          realtimeData: _realtimeData,
+          settingsData: _settingsData,
+          onSwitchMode: _switchValveMode,
+          onSendCommand: _sendValveCommand,
+          onSetSetpoint: _onSetSetpoint,
+        );
       case 'settings':
-        return _buildSettings(submenu);
+        return SettingsWidget(
+          submenu: submenu,
+          settingsData: _settingsData,
+          onReloadSettings: _reloadSettings,
+          onSaveAllSettings: _saveAllSettings,
+          onParamChanged: _onParamChanged,
+          onParamSave: _onParamSave,
+          onParamLoad: _onParamLoad,
+        );
       case 'alarms':
-        return _buildAlarms(submenu);
+        return AlarmsWidget(
+          submenu: submenu,
+          alarms: _alarms,
+          onResetAlarms: _resetAlarms,
+          isResetting: _isResettingAlarms,
+        );
       case 'startstop':
-        return _buildStartStop(submenu);
+        return StartStopWidget(
+          submenu: submenu,
+          realtimeData: _realtimeData,
+          onToggle: _toggleStartStop,
+        );
       default:
         return const Center(child: Text('Неизвестный тип подменю'));
     }
-  }
-
-  // ==================== ДАТЧИКИ ====================
-
-  Widget _buildSensors(SubmenuConfig submenu) {
-    if (submenu.items == null || submenu.items!.isEmpty) {
-      return const Center(child: Text('Нет датчиков'));
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: submenu.items!.map((item) {
-        final value = _realtimeData[item.address.toString()];
-        return SensorWidget(
-          item: item,
-          value: value,
-          key: ValueKey('sensor_${item.address}'),
-        );
-      }).toList(),
-    );
-  }
-
-  // ==================== РЕЛЕ ====================
-
-  Widget _buildRelays(SubmenuConfig submenu) {
-    if (submenu.items == null || submenu.items!.isEmpty) {
-      return const Center(child: Text('Нет реле'));
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: submenu.items!.map((item) {
-        final value = _realtimeData[item.address.toString()];
-        return RelayWidget(
-          item: item,
-          value: value,
-          key: ValueKey('relay_${item.address}'),
-        );
-      }).toList(),
-    );
-  }
-
-  // ==================== НАСОСЫ ====================
-
-  Widget _buildPumps(SubmenuConfig submenu) {
-    if (submenu.items == null || submenu.items!.isEmpty) {
-      return const Center(child: Text('Нет насосов'));
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: submenu.items!.asMap().entries.map((entry) {
-        final index = entry.key;
-        final item = entry.value;
-
-        final value = _realtimeData[item.address.toString()];
-        final modeValue = item.modeAddress != null
-            ? _modeData[item.modeAddress.toString()]
-            : null;
-
-        final pumpId = 'pump_${index}_${item.address}';
-
-        return PumpWidget(
-          item: item,
-          value: value,
-          modeValue: modeValue,
-          pumpId: pumpId,
-          key: ValueKey('pump_${item.address}_${modeValue ?? 0}_$index'),
-          onDropdownOpen: _onDropdownOpen,
-          onDropdownClose: _onDropdownClose,
-          onModeChanged: (newValue) {
-            final address = item.modeAddress!;
-            LoggerService().log(
-              '🔄 Локальное обновление режима: ${item.name} -> $newValue (адрес $address)',
-            );
-
-            if (mounted) {
-              setState(() {
-                _modeData[address.toString()] = newValue;
-              });
-            }
-          },
-        );
-      }).toList(),
-    );
-  }
-
-  // ==================== КЛАПАН ====================
-
-  Widget _buildValve(SubmenuConfig submenu) {
-    final isAnalog = submenu.analog ?? false;
-
-    ItemConfig? positionItem;
-    ItemConfig? setpointItem;
-
-    if (isAnalog && submenu.items != null) {
-      for (final item in submenu.items!) {
-        if (item.name.contains('Текущее положение') &&
-            (item.readonly ?? false)) {
-          positionItem = item;
-        }
-        if (item.name.contains('Заданное положение')) {
-          setpointItem = item;
-        }
-      }
-    }
-
-    final children = <Widget>[];
-
-    if (submenu.items != null) {
-      for (final item in submenu.items!) {
-        if (isAnalog) {
-          if (item.name.contains('Текущее положение') &&
-              (item.readonly ?? false))
-            continue;
-          if (item.name.contains('Заданное положение')) continue;
-        }
-        final value = _realtimeData[item.address.toString()];
-        children.add(_buildValveItem(item, value, submenu, isAnalog));
-      }
-    }
-
-    if (isAnalog && positionItem != null) {
-      final value = _realtimeData[positionItem.address.toString()];
-      children.add(_buildValveItem(positionItem, value, submenu, isAnalog));
-    }
-
-    if (isAnalog && setpointItem != null) {
-      final value =
-          _settingsData[setpointItem.address.toString()] ??
-          setpointItem.defaultValue ??
-          50;
-      children.add(_buildSetpointControl(setpointItem, value));
-    }
-
-    if (submenu.controls != null && submenu.controls!.isNotEmpty) {
-      children.addAll([
-        const SizedBox(height: 16),
-        const Divider(),
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 8),
-          child: Text(
-            'Управление клапаном',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.blue,
-            ),
-          ),
-        ),
-        ...submenu.controls!.map((control) => _buildValveControl(control)),
-      ]);
-    }
-
-    return ListView(padding: const EdgeInsets.all(16), children: children);
-  }
-
-  Widget _buildValveItem(
-    ItemConfig item,
-    dynamic value,
-    SubmenuConfig submenu,
-    bool isAnalog,
-  ) {
-    if (item.name.contains('Режим работы')) {
-      final isManual = value != null && (value & (1 << (item.bit ?? 0))) != 0;
-
-      return Card(
-        margin: const EdgeInsets.only(bottom: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    item.name,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: isManual ? Colors.orange[100] : Colors.green[100],
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      isManual ? 'Ручной' : 'Авто',
-                      style: TextStyle(
-                        color: isManual
-                            ? Colors.orange[800]
-                            : Colors.green[800],
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () => _switchValveMode(item, false),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: isManual
-                            ? Colors.grey[300]
-                            : Colors.green,
-                        foregroundColor: isManual
-                            ? Colors.grey[600]
-                            : Colors.white,
-                      ),
-                      child: const Text('АВТО'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () => _switchValveMode(item, true),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: isManual
-                            ? Colors.orange
-                            : Colors.grey[300],
-                        foregroundColor: isManual
-                            ? Colors.white
-                            : Colors.grey[600],
-                      ),
-                      child: const Text('РУЧНОЙ'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (isAnalog &&
-        item.name.contains('Текущее положение') &&
-        (item.readonly ?? false)) {
-      return Card(
-        margin: const EdgeInsets.only(bottom: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.speed, color: Colors.blue),
-                  const SizedBox(width: 8),
-                  Text(
-                    item.name,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      'ТОЛЬКО ЧТЕНИЕ',
-                      style: TextStyle(fontSize: 9, color: Colors.grey),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      children: [
-                        LinearProgressIndicator(
-                          value: value != null
-                              ? (value / 100).clamp(0.0, 1.0)
-                              : 0.0,
-                          backgroundColor: Colors.grey[300],
-                          color: _getProgressColor(value),
-                          minHeight: 12,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          value != null ? '$value%' : '--',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              item.name,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _getStateText(item, value),
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: _getStateColor(item, value),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                Text(
-                  item.states != null && value != null
-                      ? (item.states!.length > 1
-                            ? item.states![(value & (1 << (item.bit ?? 0))) != 0
-                                  ? 1
-                                  : 0]
-                            : item.states![0])
-                      : '--',
-                  style: const TextStyle(fontSize: 14, color: Colors.grey),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSetpointControl(ItemConfig item, dynamic value) {
-    final currentValue = value ?? item.defaultValue ?? 50;
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.touch_app, color: Colors.orange),
-                const SizedBox(width: 8),
-                Text(
-                  'Заданное положение',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  flex: 3,
-                  child: Slider(
-                    value: currentValue.toDouble(),
-                    min: (item.min ?? 0).toDouble(),
-                    max: (item.max ?? 100).toDouble(),
-                    divisions: (item.max ?? 100) - (item.min ?? 0),
-                    label: '${currentValue.round()}%',
-                    onChanged: (newValue) {
-                      if (mounted) {
-                        setState(() {
-                          _settingsData[item.address.toString()] = newValue
-                              .round();
-                        });
-                      }
-                    },
-                  ),
-                ),
-                Expanded(
-                  flex: 1,
-                  child: Text(
-                    '${currentValue.round()}%',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      final modbusManager = ModbusManager(context);
-                      final success = await modbusManager.writeRegister(
-                        item.address,
-                        0,
-                        type: item.type,
-                      );
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              success ? 'Заданное положение: 0%' : 'Ошибка',
-                            ),
-                            backgroundColor: success
-                                ? Colors.green
-                                : Colors.red,
-                          ),
-                        );
-                        if (success) {
-                          await _updateRealtimeData();
-                        }
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red[700],
-                      foregroundColor: Colors.white,
-                    ),
-                    child: const Text('0%'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      final modbusManager = ModbusManager(context);
-                      final success = await modbusManager.writeRegister(
-                        item.address,
-                        100,
-                        type: item.type,
-                      );
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              success ? 'Заданное положение: 100%' : 'Ошибка',
-                            ),
-                            backgroundColor: success
-                                ? Colors.green
-                                : Colors.red,
-                          ),
-                        );
-                        if (success) {
-                          await _updateRealtimeData();
-                        }
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green[700],
-                      foregroundColor: Colors.white,
-                    ),
-                    child: const Text('100%'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            ElevatedButton(
-              onPressed: () async {
-                final modbusManager = ModbusManager(context);
-                final valueToWrite = _settingsData[item.address.toString()];
-                if (valueToWrite != null) {
-                  final success = await modbusManager.writeRegister(
-                    item.address,
-                    valueToWrite,
-                    type: item.type,
-                  );
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          success ? 'Положение установлено' : 'Ошибка',
-                        ),
-                        backgroundColor: success ? Colors.green : Colors.red,
-                      ),
-                    );
-                    if (success) {
-                      await _updateRealtimeData();
-                    }
-                  }
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Применить'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _switchValveMode(ItemConfig item, bool manual) async {
-    if (!mounted) return;
-
-    final modbusManager = ModbusManager(context);
-
-    final currentValue = await modbusManager.readRegister(item.address);
-    if (currentValue == null) {
-      if (mounted) _showError('Не удалось прочитать текущий режим');
-      return;
-    }
-
-    final newValue = manual
-        ? currentValue | (1 << (item.bit ?? 0))
-        : currentValue & ~(1 << (item.bit ?? 0));
-
-    final success = await modbusManager.writeRegister(item.address, newValue);
-
-    if (success && mounted) {
-      _showSuccess(
-        manual ? 'Режим переключен на РУЧНОЙ' : 'Режим переключен на АВТО',
-      );
-      await _updateRealtimeData();
-    } else if (mounted) {
-      _showError('Не удалось переключить режим');
-    }
-  }
-
-  Widget _buildValveControl(ControlConfig control) {
-    final modbusManager = ModbusManager(context);
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        title: Text(
-          control.name,
-          style: const TextStyle(fontWeight: FontWeight.w500),
-        ),
-        trailing: const Icon(Icons.play_arrow, color: Colors.blue),
-        onTap: () async {
-          if (!mounted) return;
-
-          final success = await modbusManager.writeRegister(
-            control.address,
-            control.value,
-          );
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  success
-                      ? 'Команда "${control.name}" отправлена'
-                      : 'Ошибка отправки команды',
-                ),
-                backgroundColor: success ? Colors.green : Colors.red,
-                duration: const Duration(seconds: 2),
-              ),
-            );
-            if (success) {
-              await _updateRealtimeData();
-            }
-          }
-        },
-      ),
-    );
-  }
-
-  // ==================== НАСТРОЙКИ ====================
-
-  Widget _buildSettings(SubmenuConfig submenu) {
-    if (submenu.groups == null || submenu.groups!.isEmpty) {
-      return const Center(child: Text('Нет настроек'));
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: _reloadSettings,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Обновить с ПЛК'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue[100],
-                  foregroundColor: Colors.blue[800],
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: _saveAllSettings,
-                icon: const Icon(Icons.save),
-                label: const Text('Сохранить все'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Измененные параметры подсвечиваются желтым. '
-          'Кнопка "Сохранить все" записывает все измененные параметры.',
-          style: TextStyle(fontSize: 12, color: Colors.grey),
-        ),
-        const SizedBox(height: 16),
-        ...submenu.groups!.map((group) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Text(
-                  group.name,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue,
-                  ),
-                ),
-              ),
-              ...group.items.map((item) {
-                final value =
-                    _settingsData[item.address.toString()] ?? item.defaultValue;
-                return ParameterWidget(
-                  item: item,
-                  value: value,
-                  key: ValueKey('param_${item.address}'),
-                  onChanged: (newValue) {
-                    if (mounted) {
-                      setState(() {
-                        _settingsData[item.address.toString()] = newValue;
-                      });
-                    }
-                  },
-                  onSave: (newValue) async {
-                    if (!mounted) return;
-
-                    final modbusManager = ModbusManager(context);
-                    LoggerService().log(
-                      '🔵 Сохранение: ${item.name} = $newValue в адрес ${item.address}',
-                    );
-
-                    final success = await modbusManager.writeRegister(
-                      item.address,
-                      newValue,
-                      type: item.type,
-                    );
-
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            success ? 'Параметр сохранен' : 'Ошибка сохранения',
-                          ),
-                          backgroundColor: success ? Colors.green : Colors.red,
-                          duration: const Duration(seconds: 2),
-                        ),
-                      );
-                    }
-
-                    if (success && mounted) {
-                      await _reloadSettings();
-                    }
-                  },
-                  onLoad: () async {
-                    if (!mounted) return null;
-
-                    final modbusManager = ModbusManager(context);
-                    dynamic loadedValue;
-                    if (item.type == 'float') {
-                      loadedValue = await modbusManager.readFloat(item.address);
-                    } else {
-                      loadedValue = await modbusManager.readRegister(
-                        item.address,
-                        type: item.type,
-                      );
-                    }
-                    if (loadedValue != null && mounted) {
-                      setState(() {
-                        _settingsData[item.address.toString()] = loadedValue;
-                      });
-                    }
-                    return loadedValue;
-                  },
-                );
-              }).toList(),
-              const SizedBox(height: 16),
-            ],
-          );
-        }).toList(),
-      ],
-    );
-  }
-
-  // ==================== АВАРИИ ====================
-
-  Widget _buildAlarms(SubmenuConfig submenu) {
-    if (_alarms.isEmpty) {
-      return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.check_circle, size: 64, color: Colors.green),
-            SizedBox(height: 16),
-            Text(
-              'Аварий нет',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.green,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        ..._alarms.map((alarm) {
-          return Card(
-            margin: const EdgeInsets.only(bottom: 8),
-            color: Colors.red[50],
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-              side: BorderSide(color: Colors.red[300]!, width: 1),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.warning, color: Colors.red),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          alarm.name,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.red,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    alarm.description,
-                    style: TextStyle(color: Colors.red[700]),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
-
-        const SizedBox(height: 16),
-
-        if (submenu.resetAddress != null)
-          ElevatedButton.icon(
-            onPressed: () async {
-              if (!mounted) return;
-
-              final modbusManager = ModbusManager(context);
-
-              if (!modbusManager.connected) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Нет подключения к контроллеру'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-                return;
-              }
-
-              final confirm = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Сброс аварий'),
-                  content: const Text(
-                    'Вы уверены, что хотите сбросить все активные аварии?\n\n'
-                    '⚠️ Сброс возможен только если причина аварии устранена.',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Отмена'),
-                    ),
-                    ElevatedButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                      ),
-                      child: const Text('Сбросить'),
-                    ),
-                  ],
-                ),
-              );
-
-              if (confirm != true || !mounted) return;
-
-              final resetAddress = submenu.resetAddress!;
-              final resetBit = submenu.resetBit ?? 3;
-
-              // ✅ Останавливаем таймер на время сброса
-              _updateTimer?.cancel();
-              setState(() {
-                _isLoading = true;
-              });
-
-              try {
-                LoggerService().log(
-                  '🔄 Сброс аварий: адрес=$resetAddress, бит=$resetBit',
-                );
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('⏳ Сброс аварий...'),
-                    duration: Duration(seconds: 1),
-                  ),
-                );
-
-                // ✅ 1. Читаем текущее значение
-                final currentValue = await modbusManager.readRegister(
-                  resetAddress,
-                );
-                if (currentValue == null) {
-                  _showError('Не удалось прочитать статус');
-                  return;
-                }
-
-                // ✅ 2. Устанавливаем бит сброса
-                final valueWithReset = currentValue | (1 << resetBit);
-                LoggerService().log(
-                  '🔧 Устанавливаем бит $resetBit: $currentValue → $valueWithReset',
-                );
-
-                final success1 = await modbusManager.writeRegister(
-                  resetAddress,
-                  valueWithReset,
-                );
-                if (!success1) {
-                  _showError('Ошибка установки бита сброса');
-                  return;
-                }
-
-                // ✅ 3. Ждем, пока ПЛК обработает
-                await Future.delayed(const Duration(milliseconds: 300));
-
-                // ✅ 4. Снимаем бит сброса
-                final valueAfterReset = valueWithReset & ~(1 << resetBit);
-                LoggerService().log(
-                  '🔧 Снимаем бит $resetBit: $valueWithReset → $valueAfterReset',
-                );
-
-                final success2 = await modbusManager.writeRegister(
-                  resetAddress,
-                  valueAfterReset,
-                );
-                if (!success2) {
-                  _showError('Ошибка снятия бита сброса');
-                  return;
-                }
-
-                // ✅ 5. Ждем, пока ПЛК применит изменения
-                await Future.delayed(const Duration(milliseconds: 500));
-
-                // ✅ 6. Обновляем список аварий
-                await _loadRealtimeData(submenu);
-
-                // ✅ 7. Проверяем результат
-                if (_alarms.isEmpty) {
-                  _showSuccess('✅ Все аварии сброшены!');
-                } else {
-                  _showWarning(
-                    '⚠️ Остались активные аварии: ${_alarms.map((a) => a.name).join(", ")}\n'
-                    'Устраните причину и повторите сброс.',
-                  );
-                }
-              } catch (e) {
-                LoggerService().log(
-                  '❌ Ошибка сброса аварий: $e',
-                  level: LogLevel.error,
-                );
-                _showError('Ошибка сброса аварий: $e');
-              } finally {
-                // ✅ Возобновляем таймер
-                setState(() {
-                  _isLoading = false;
-                });
-                if (_isRealtimeType && mounted) {
-                  _startAutoUpdate();
-                }
-              }
-            },
-            icon: const Icon(Icons.refresh),
-            label: const Text('Сбросить аварии'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  // ==================== ВКЛ/ВЫКЛ ====================
-
-  Widget _buildStartStop(SubmenuConfig submenu) {
-    if (submenu.items == null || submenu.items!.isEmpty) {
-      return const Center(child: Text('Нет элементов управления'));
-    }
-
-    final item = submenu.items!.first;
-    final value = _realtimeData[item.address.toString()];
-    final isOn = value != null && (value & (1 << (item.bit ?? 0))) != 0;
-
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isOn ? Colors.green[100] : Colors.red[100],
-                border: Border.all(
-                  color: isOn ? Colors.green : Colors.red,
-                  width: 4,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: (isOn ? Colors.green : Colors.red).withValues(
-                      alpha: 0.3,
-                    ),
-                    blurRadius: 20,
-                    spreadRadius: 5,
-                  ),
-                ],
-              ),
-              child: Icon(
-                isOn ? Icons.power_settings_new : Icons.power_off,
-                size: 60,
-                color: isOn ? Colors.green : Colors.red,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              item.name,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              isOn ? 'Включено' : 'Выключено',
-              style: TextStyle(
-                fontSize: 18,
-                color: isOn ? Colors.green : Colors.red,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 32),
-            SizedBox(
-              width: 200,
-              child: ElevatedButton(
-                onPressed: () async {
-                  if (!mounted) return;
-
-                  final modbusManager = ModbusManager(context);
-                  final currentValue = value ?? 0;
-                  final newRegister = isOn
-                      ? currentValue & ~(1 << (item.bit ?? 0))
-                      : currentValue | (1 << (item.bit ?? 0));
-
-                  final success = await modbusManager.writeRegister(
-                    item.address,
-                    newRegister,
-                  );
-
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          success
-                              ? 'Состояние изменено'
-                              : 'Ошибка изменения состояния',
-                        ),
-                        backgroundColor: success ? Colors.green : Colors.red,
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
-                    if (success) {
-                      await _updateRealtimeData();
-                    }
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: isOn ? Colors.red : Colors.green,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: Text(
-                  isOn ? 'Выключить' : 'Включить',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ==================== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ====================
-
-  void _showSuccess(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-
-  void _showError(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-  }
-
-  void _showWarning(String message) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 4),
-        ),
-      );
-    }
-  }
-
-  String _getStateText(ItemConfig item, dynamic value) {
-    if (value == null) return '--';
-    if (item.states != null && item.states!.isNotEmpty) {
-      if (item.states!.length == 2) {
-        final isOn = (value is int) && (value & (1 << (item.bit ?? 0))) != 0;
-        return isOn ? item.states![1] : item.states![0];
-      }
-      return item.states![0];
-    }
-    if (item.bit != null && value is int) {
-      return (value & (1 << item.bit!)) != 0 ? 'Вкл' : 'Выкл';
-    }
-    return value.toString();
-  }
-
-  Color _getStateColor(ItemConfig item, dynamic value) {
-    if (value == null) return Colors.grey;
-    if (item.bit != null && value is int) {
-      final isOn = (value & (1 << item.bit!)) != 0;
-      return isOn ? Colors.green : Colors.red;
-    }
-    return Colors.black87;
-  }
-
-  Color _getProgressColor(dynamic value) {
-    if (value == null) return Colors.grey;
-    if (value < 20) return Colors.red;
-    if (value < 50) return Colors.orange;
-    return Colors.green;
   }
 }
