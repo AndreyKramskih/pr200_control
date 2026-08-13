@@ -9,6 +9,8 @@ import '../screens/load_config_screen.dart';
 import '../screens/log_screen.dart';
 import '../screens/trends_screen.dart';
 import '../services/report_service.dart';
+import '../services/pin_service.dart';
+import '../screens/pin_screen.dart';
 
 class MainMenuScreen extends StatefulWidget {
   const MainMenuScreen({super.key});
@@ -528,6 +530,103 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                       ),
                       onTap: () {
                         Navigator.pushNamed(context, '/connection');
+                      },
+                    ),
+                  ),
+                  // Кнопка "Настройки PIN-кода"
+                  Card(
+                    elevation: 4,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      leading: const Text('🔐', style: TextStyle(fontSize: 32)),
+                      title: Text(
+                        'Настройки PIN-кода',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: themeProvider.isDarkMode
+                              ? Colors.white
+                              : Colors.black87,
+                        ),
+                      ),
+                      subtitle: const Text(
+                        'Установить или отключить PIN-код',
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      trailing: Icon(
+                        Icons.arrow_forward_ios,
+                        color: themeProvider.isDarkMode
+                            ? Colors.grey[400]
+                            : Colors.grey,
+                      ),
+                      onTap: () async {
+                        final pinService = PinService();
+                        final isSet = await pinService.isPinSet();
+
+                        if (isSet) {
+                          // Если PIN установлен - предлагаем удалить
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('Удалить PIN-код?'),
+                              content: const Text(
+                                'Вы уверены, что хотите отключить PIN-код?',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(context, false),
+                                  child: const Text('Отмена'),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(context, true),
+                                  child: const Text(
+                                    'Удалить',
+                                    style: TextStyle(color: Colors.red),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+
+                          if (confirm == true) {
+                            await pinService.removePin();
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('🔓 PIN-код удален'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          }
+                        } else {
+                          // Если PIN не установлен - переходим к установке
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => PinScreen(
+                                onSuccess: () {
+                                  Navigator.pop(context);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('🔐 PIN-код установлен'),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                },
+                                isSettingPin: true,
+                              ),
+                            ),
+                          );
+                        }
                       },
                     ),
                   ),

@@ -10,11 +10,13 @@ import 'providers/theme_provider.dart';
 import 'services/modbus_service.dart';
 import 'services/modbus_rtu_service.dart';
 import 'services/config_service.dart';
+import 'services/pin_service.dart';
 import 'screens/main_menu_screen.dart';
 import 'screens/system_screen.dart';
 import 'screens/connection_screen.dart';
 import 'screens/submenu_screens.dart';
 import 'screens/load_config_screen.dart';
+import 'screens/pin_screen.dart';
 import 'services/logger_service.dart';
 
 void main() {
@@ -22,7 +24,6 @@ void main() {
     () {
       WidgetsFlutterBinding.ensureInitialized();
 
-      // ✅ Обработчик ошибок Flutter
       FlutterError.onError = (FlutterErrorDetails details) {
         FlutterError.dumpErrorToConsole(details);
         LoggerService().log(
@@ -34,7 +35,6 @@ void main() {
         }
       };
 
-      // ✅ Обработчик ошибок платформы
       ui.PlatformDispatcher.instance.onError = (error, stack) {
         LoggerService().log(
           '🔥 Platform ошибка: $error\nСтек: $stack',
@@ -46,7 +46,6 @@ void main() {
       runApp(const MyApp());
     },
     (error, stack) {
-      // ✅ Необработанные ошибки
       LoggerService().log(
         '🔥 Необработанная ошибка: $error\nСтек: $stack',
         level: LogLevel.error,
@@ -68,19 +67,35 @@ class _MyAppState extends State<MyApp> {
   late ModbusRtuService _modbusRtuService;
   final ThemeProvider _themeProvider = ThemeProvider();
   bool _isLoading = true;
+  bool _isPinVerified = false;
+  bool _isPinRequired = false;
 
   @override
   void initState() {
     super.initState();
     _modbusService = ModbusService();
     _modbusRtuService = ModbusRtuService();
-    _loadConfig();
+    _checkPinAndLoad();
     _initLogger();
   }
 
   Future<void> _initLogger() async {
     await LoggerService().init();
     LoggerService().log('🚀 Приложение запущено');
+  }
+
+  Future<void> _checkPinAndLoad() async {
+    final pinService = PinService();
+    final isSet = await pinService.isPinSet();
+
+    setState(() {
+      _isPinRequired = isSet;
+      if (!isSet) {
+        _isPinVerified = true;
+      }
+    });
+
+    await _loadConfig();
   }
 
   Future<void> _loadConfig() async {
@@ -97,7 +112,6 @@ class _MyAppState extends State<MyApp> {
         });
       }
 
-      // Автоподключение
       await _autoConnect();
     } catch (e) {
       LoggerService().log(
@@ -118,13 +132,11 @@ class _MyAppState extends State<MyApp> {
     final config = _config!;
 
     if (config.connectionType == 'rtu') {
-      // RTU автоподключение
       try {
         final devices = await _modbusRtuService.getAvailableDevices();
 
         if (devices.isNotEmpty) {
           String port;
-          // ✅ Используем config.rtuConfig?.port
           if (config.rtuConfig != null && config.rtuConfig!.port.isNotEmpty) {
             final savedPort = config.rtuConfig!.port;
             final found = devices.firstWhere(
@@ -155,7 +167,6 @@ class _MyAppState extends State<MyApp> {
         );
       }
     } else {
-      // TCP автоподключение
       try {
         await _modbusService.connect(
           config.modbusServer.ip,
@@ -190,6 +201,24 @@ class _MyAppState extends State<MyApp> {
     if (_isLoading) {
       return const MaterialApp(
         home: Scaffold(body: Center(child: CircularProgressIndicator())),
+      );
+    }
+
+    // ✅ Если PIN установлен и не проверен - показываем PinScreen
+    if (_isPinRequired && !_isPinVerified) {
+      return MaterialApp(
+        title: 'PR200 Управление',
+        theme: _buildLightTheme(),
+        darkTheme: _buildDarkTheme(),
+        themeMode: _themeProvider.themeMode,
+        debugShowCheckedModeBanner: false,
+        home: PinScreen(
+          onSuccess: () {
+            setState(() {
+              _isPinVerified = true;
+            });
+          },
+        ),
       );
     }
 
