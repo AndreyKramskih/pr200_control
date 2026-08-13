@@ -1,5 +1,5 @@
 {
-  "project_name": "Лаб индастриз - паровой ИТП",
+  "project_name": "Лаборатория Пермь",
   "modbus_server": {
     "ip": "192.168.101.250",
     "port": 502,
@@ -9,7 +9,7 @@
   },
   "systems": {
     "heating": {
-      "name": "Вентиляция",
+      "name": "Отопление",
       "icon": "🔥",
       "submenus": {
         "sensors": {
@@ -19,7 +19,7 @@
           "items": [
             {
               "name": "Уставка подачи по ТГ ",
-              "address": 553,
+              "address": 518,
               "type": "int",
               "unit": "°C",
               "min": 0,
@@ -28,8 +28,18 @@
               "icon": "🎯"
             },
             {
-              "name": "Уставка подачи с учет рампы ",
-              "address": 554,
+              "name": "Уставка подачи с учет обр ",
+              "address": 519,
+              "type": "int",
+              "unit": "°C",
+              "min": 0,
+              "max": 120,
+              "is_setpoint": true,
+              "icon": "🎯"
+            },
+            {
+              "name": "Уставка обратки ",
+              "address": 517,
               "type": "int",
               "unit": "°C",
               "min": 0,
@@ -39,25 +49,7 @@
             },
             {
               "name": "Температура подачи",
-              "address": 555,
-              "type": "int",
-              "unit": "°C",
-              "min": 0,
-              "max": 120,
-              "icon": "🌡️"
-            },
-            {
-              "name": "Температура конд ТО 1",
-              "address": 556,
-              "type": "int",
-              "unit": "°C",
-              "min": 0,
-              "max": 120,
-              "icon": "🌡️"
-            },
-            {
-              "name": "Температура конд ТО 2",
-              "address": 557,
+              "address": 515,
               "type": "int",
               "unit": "°C",
               "min": 0,
@@ -66,34 +58,16 @@
             },
             {
               "name": "Температура обратки",
-              "address": 558,
+              "address": 516,
               "type": "int",
               "unit": "°C",
               "min": 0,
               "max": 120,
               "icon": "🌡️"
             },
-            {
-              "name": "Температура комнат",
-              "address": 559,
-              "type": "float",
-              "unit": "°C",
-              "min": -50,
-              "max": 50,
-              "icon": "🌡️"
-            },
-            {
-              "name": "Температура наруж",
-              "address": 561,
-              "type": "float",
-              "unit": "°C",
-              "min": -50,
-              "max": 50,
-              "icon": "🌡️"
-            },
 			      {
               "name": "Давление до насосов",
-              "address": 563,
+              "address": 539,
               "type": "float",
               "unit": "бар",
               "min": 0,
@@ -102,7 +76,7 @@
             },
 			      {
               "name": "Давление после насосов",
-              "address": 565,
+              "address": 541,
               "type": "float",
               "unit": "бар",
               "min": 0,
@@ -110,38 +84,13 @@
               "icon": "⛲"
             },
             {
-              "name": "Давление пара",
-              "address": 567,
+              "name": "Температура наружная",
+              "address": 543,
               "type": "float",
-              "unit": "бар",
-              "min": 0,
-              "max": 16,
-              "icon": "⛲"
-            }
-          ]
-        },
-        "relays": {
-          "name": "Реле",
-          "icon": "🔌",
-          "type": "relays",
-          "items": [
-            {
-              "name": "Реле безопасности",
-              "address": 512,
-              "bit": 4,
-              "states": [
-                "Разомкнуто",
-                "Замкнуто"
-              ]
-            },
-            {
-              "name": "Термостат",
-              "address": 512,
-              "bit": 6,
-              "states": [
-                "Разомкнуто",
-                "Замкнуто"
-              ]
+              "unit": "°C",
+              "min": -50,
+              "max": 50,
+              "icon": "🌡️"
             }
           ]
         },
@@ -153,23 +102,23 @@
             {
               "name": "Насос 1",
               "address": 512,
-              "bit": 8,
+              "bit": 4,
               "states": [
                 "Выкл",
                 "Вкл"
               ],
-              "mode_address": 524,
+              "mode_address": 520,
               "mode_states": ["Выкл", "Основной", "Резервный"]
             },
 			{
               "name": "Насос 2",
               "address": 512,
-              "bit": 9,
+              "bit": 5,
               "states": [
                 "Выкл",
                 "Вкл"
               ],
-              "mode_address": 525,
+              "mode_address": 521,
               "mode_states": ["Выкл", "Основной", "Резервный"]
             }
           ]
@@ -182,7 +131,7 @@
             {
               "name": "Режим работы",
               "address": 513,
-              "bit": 9,
+              "bit": 11,
               "states": [
                 "Авто",
                 "Ручной"
@@ -190,8 +139,8 @@
             },
             {
               "name": "Открывается",
-              "address": 513,
-              "bit": 14,
+              "address": 512,
+              "bit": 2,
               "states": [
                 " ",
                 "Открывается"
@@ -199,8 +148,8 @@
             },
             {
               "name": "Закрывается",
-              "address": 513,
-              "bit": 15,
+              "address": 512,
+              "bit": 3,
               "states": [
                 " ",
                 "Закрывается"
@@ -210,19 +159,19 @@
           "controls": [
             {
               "name": "Открыть",
-              "address": 526,
+              "address": 524,
               "value": 2,
               "type": "int"
             },
             {
               "name": "Закрыть",
-              "address": 526,
+              "address": 524,
               "value": 0,
               "type": "int"
             },
             {
               "name": "Стоп",
-              "address": 526,
+              "address": 524,
               "value": 1,
               "type": "int"
             }
@@ -238,7 +187,7 @@
               "items": [
                 {
                   "name": "Задержка РПД",
-                  "address": 516,
+                  "address": 522,
                   "type": "int",
                   "unit": "сек",
                   "min": 1,
@@ -247,7 +196,7 @@
                 },
                 {
                   "name": "Время переключения",
-                  "address": 517,
+                  "address": 523,
                   "type": "int",
                   "unit": "ч",
                   "min": 1,
@@ -260,17 +209,8 @@
 			  "name": "Настройки давлений",
               "items": [
                 {
-                  "name": "Мин давл пара",
-                  "address": 544,
-                  "type": "float",
-                  "unit": "бар",
-                  "min": 0,
-                  "max": 16,
-                  "default": 1.5
-                },
-                {
                   "name": "Мин давление",
-                  "address": 546,
+                  "address": 547,
                   "type": "float",
                   "unit": "бар",
                   "min": 0,
@@ -279,7 +219,7 @@
                 },
                 {
                   "name": "Мин перепад",
-                  "address": 548,
+                  "address": 549,
                   "type": "float",
                   "unit": "бар",
                   "min": 0,
@@ -292,17 +232,8 @@
               "name": "Настройки клапана",
               "items": [
                 {
-                  "name": "Время привода",
-                  "address": 515,
-                  "type": "int",
-                  "unit": "сек",
-                  "min": 0,
-                  "max": 150,
-                  "default": 15
-                },
-                {
                   "name": "Коэф пропорц",
-                  "address": 519,
+                  "address": 525,
                   "type": "int",
                   "unit": "%/С",
                   "min": 1,
@@ -311,7 +242,7 @@
                 },
                 {
                   "name": "Время интегр",
-                  "address": 520,
+                  "address": 526,
                   "type": "int",
                   "unit": "сек",
                   "min": 1,
@@ -320,7 +251,7 @@
                 },
                 {
                   "name": "Время дифференц",
-                  "address": 521,
+                  "address": 527,
                   "type": "int",
                   "unit": "сек",
                   "min": 0,
@@ -328,35 +259,17 @@
                   "default": 0
                 },
                 {
-                  "name": "Разница рампы",
-                  "address": 522,
-                  "type": "int",
-                  "unit": "°C",
-                  "min": 0,
-                  "max": 100,
-                  "default": 0
-                },
-                {
-                  "name": "Время рампы",
-                  "address": 523,
-                  "type": "int",
-                  "unit": "сек",
-                  "min": 0,
-                  "max": 100,
-                  "default": 0
-                },
-                {
                   "name": "Зона нечув",
-                  "address": 518,
+                  "address": 528,
                   "type": "int",
                   "unit": "С",
                   "min": 0,
                   "max": 20,
                   "default": 2
                 },
-				        {
-                  "name": "Макс темп подачи",
-                  "address": 531,
+				{
+                  "name": "Макс темп",
+                  "address": 530,
                   "type": "int",
                   "unit": "С",
                   "min": 0,
@@ -364,22 +277,13 @@
                   "default": 100
                 },
                 {
-                  "name": "Макс темп помещ",
-                  "address": 532,
+                  "name": "Время привода",
+                  "address": 537,
                   "type": "int",
-                  "unit": "С",
+                  "unit": "сек",
                   "min": 0,
                   "max": 150,
-                  "default": 100
-                },
-                {
-                  "name": "Макс темп конд",
-                  "address": 533,
-                  "type": "int",
-                  "unit": "С",
-                  "min": 0,
-                  "max": 150,
-                  "default": 100
+                  "default": 15
                 }
               ]
             },
@@ -388,7 +292,7 @@
               "items": [
                 {
                   "name": "Температура подачи -30°C",
-                  "address": 527,
+                  "address": 531,
                   "type": "int",
                   "unit": "°C",
                   "min": 30,
@@ -397,7 +301,7 @@
                 },
                 {
                   "name": "Температура подачи -15°C",
-                  "address": 528,
+                  "address": 532,
                   "type": "int",
                   "unit": "°C",
                   "min": 30,
@@ -406,7 +310,7 @@
                 },
                 {
                   "name": "Температура подачи 0°C",
-                  "address": 529,
+                  "address": 533,
                   "type": "int",
                   "unit": "°C",
                   "min": 30,
@@ -415,12 +319,44 @@
                 },
                 {
                   "name": "Температура подачи +10°C",
-                  "address": 530,
+                  "address": 534,
                   "type": "int",
                   "unit": "°C",
                   "min": 30,
                   "max": 105,
                   "default": 40
+                }
+              ]
+            },
+            {
+              "name": "Темп график обратки",
+              "items": [
+                {
+                  "name": "Температура обратки -30°C",
+                  "address": 535,
+                  "type": "int",
+                  "unit": "°C",
+                  "min": 30,
+                  "max": 105,
+                  "default": 70
+                },
+                {
+                  "name": "Температура обратки +10°C",
+                  "address": 536,
+                  "type": "int",
+                  "unit": "°C",
+                  "min": 30,
+                  "max": 105,
+                  "default": 30
+                },
+                {
+                  "name": "Влияние обратки",
+                  "address": 529,
+                  "type": "int",
+                  "unit": " ",
+                  "min": 0,
+                  "max": 5,
+                  "default": 2
                 }
               ]
             }
@@ -432,122 +368,68 @@
           "type": "alarms",
           "alarms": [
             {
-              "name": "Авария реле безопасности!",
-              "address": 512,
-              "bit": 12,
-              "description": "Сработало реле безопасности!"
-            },
-            {
-              "name": "Угроза замерзания!",
-              "address": 512,
-              "bit": 13,
-              "description": "Угроза замерзания!"
-            },
-            {
-              "name": "Перегрев помещения!",
-              "address": 512,
-              "bit": 14,
-              "description": "Перегрев помещения!"
-            },
-            {
-              "name": "Ошибка Рпара!",
-              "address": 512,
-              "bit": 15,
-              "description": "Ошибка датчика Рпара!"
-            },
-            {
-              "name": "Ошибка Рвх!",
-              "address": 513,
-              "bit": 0,
-              "description": "Ошибка датчика Рвх!"
-            },
-            {
-              "name": "Сух ход!",
-              "address": 513,
-              "bit": 1,
-              "description": "Сухой ход!"
-            },
-            {
-              "name": "Авария обоих насосов!",
-              "address": 513,
-              "bit": 2,
-              "description": "Авария обоих насосов!"
-            },
-            {
-              "name": "Ошибка датч темп подачи!",
-              "address": 513,
-              "bit": 3,
-              "description": "Ошибка датч темп подачи!"
-            },
-            {
-              "name": "Перегрев по датчику!",
-              "address": 513,
-              "bit": 4,
-              "description": "Перегрев по датчику!"
-            },
-            {
-              "name": "Перегрев по термостату!",
-              "address": 513,
-              "bit": 5,
-              "description": "Перегрев по термостату!"
-            },
-            {
-              "name": "Ошибка Т конд ТО 1!",
-              "address": 513,
-              "bit": 6,
-              "description": "Ошибка Т конд ТО 1!"
-            },
-            {
-              "name": "Перегрев конд ТО 1!",
-              "address": 513,
-              "bit": 7,
-              "description": "Перегрев конд ТО 1!"
-            },
-            {
-              "name": "Низкое давление пара!",
-              "address": 513,
-              "bit": 8,
-              "description": "Низкое давление пара!"
-            },
-            {
-              "name": "Ошибка Т обратки!",
-              "address": 513,
-              "bit": 11,
-              "description": "Ошибка Т обратки!"
-            },
-            {
-              "name": "Ошибка Т помещения!",
-              "address": 513,
-              "bit": 12,
-              "description": "Ошибка Т помещения!"
-            },
-            {
-              "name": "Ошибка Т наруж!",
-              "address": 513,
-              "bit": 13,
-              "description": "Ошибка Т наруж!"
-            },
-            {
               "name": "Авария насоса 1!",
-              "address": 514,
-              "bit": 0,
+              "address": 512,
+              "bit": 12,
               "description": "Авария насоса 1!"
             },
             {
               "name": "Авария насоса 2!",
-              "address": 514,
-              "bit": 1,
+              "address": 512,
+              "bit": 13,
               "description": "Авария насоса 2!"
             },
-			      {
+			{
+			  "name": "Перегрев!",
+			  "address": 512,
+			  "bit": 15,
+			  "description": "Перегрев в отоплении!"
+            },
+			{
+              "name": "Сухой ход!",
+              "address": 513,
+              "bit": 0,
+              "description": "Сухой ход!"
+            },
+			{
+              "name": "Ошибка Рвх!",
+              "address": 513,
+              "bit": 1,
+              "description": "Ошибка Рвх!"
+            },
+			{
               "name": "Ошибка Рвых!",
-              "address": 514,
+              "address": 513,
               "bit": 2,
-              "description": "Ошибка датч Рвых!"
+              "description": "Ошибка Рвых!"
+            },
+			{
+              "name": "Ошибка Тпод!",
+              "address": 513,
+              "bit": 3,
+              "description": "Ошибка Тпод!"
+            },
+			{
+              "name": "Ошибка Тобр!",
+              "address": 513,
+              "bit": 4,
+              "description": "Ошибка Тобр!"
+            },
+			{
+              "name": "Ошибка Тнар!",
+              "address": 513,
+              "bit": 5,
+              "description": "Ошибка Тнар!"
+            },
+			{
+              "name": "Авария насосов!",
+              "address": 513,
+              "bit": 8,
+              "description": "Авария насосов!"
             }
           ],
-          "reset_address": 512,
-          "reset_bit": 3
+          "reset_address": 513,
+          "reset_bit": 14
         },
         "startstop": {
           "name": "Вкл_Выкл",
@@ -578,9 +460,25 @@
           "items": [
             {
               "name": "Давление подпитки",
-              "address": 563,
+              "address": 539,
               "type": "float",
               "unit": "бар"
+            }
+          ]
+        },
+        "relays": {
+          "name": "Реле",
+          "icon": "🔌",
+          "type": "relays",
+          "items": [
+            {
+              "name": "Реле подпитки",
+              "address": 512,
+              "bit": 0,
+              "states": [
+                "Разомкнуто",
+                "Замкнуто"
+              ]
             }
           ]
         },
@@ -592,7 +490,7 @@
             {
               "name": "Соленоид",
               "address": 512,
-              "bit": 10,
+              "bit": 6,
               "states": [
                 "Выключен",
                 "Включен"
@@ -610,7 +508,7 @@
               "items": [
                 {
                   "name": "Уставка подпитки",
-                  "address": 550,
+                  "address": 545,
                   "type": "float",
                   "unit": "бар",
                   "min": 0.5,
@@ -619,7 +517,7 @@
                 },
                 {
                   "name": "Макс время подпитки",
-                  "address": 535,
+                  "address": 538,
                   "type": "int",
                   "unit": "мин",
                   "min": 1,
@@ -637,13 +535,13 @@
           "alarms": [
             {
               "name": "Авария подпитки",
-              "address": 514,
-              "bit": 3,
+              "address": 513,
+              "bit": 9,
               "description": "Превышение времени подпитки"
             }
           ],
-          "reset_address": 512,
-          "reset_bit": 3
+          "reset_address": 513,
+          "reset_bit": 14
         }
       }
     }
