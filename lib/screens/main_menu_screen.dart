@@ -276,7 +276,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Text(
-                'v1.0.6',
+                'v1.0.7',
                 style: TextStyle(
                   color: Colors.white70,
                   fontSize: 13,
