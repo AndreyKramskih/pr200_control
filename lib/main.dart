@@ -75,13 +75,28 @@ class _MyAppState extends State<MyApp> {
     super.initState();
     _modbusService = ModbusService();
     _modbusRtuService = ModbusRtuService();
-    _checkPinAndLoad();
-    _initLogger();
+
+    // ✅ Используем postFrameCallback для гарантии порядка
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initLoggerThenLoad();
+    });
+  }
+
+  Future<void> _initLoggerThenLoad() async {
+    // ✅ Сначала инициализируем логгер
+    await _initLogger();
+
+    // ✅ Потом загружаем конфиг и подключаемся
+    await _checkPinAndLoad();
   }
 
   Future<void> _initLogger() async {
-    await LoggerService().init();
-    LoggerService().log('🚀 Приложение запущено');
+    try {
+      await LoggerService().init();
+      LoggerService().log('🚀 Приложение запущено');
+    } catch (e) {
+      print('⚠️ Ошибка логгера: $e');
+    }
   }
 
   Future<void> _checkPinAndLoad() async {

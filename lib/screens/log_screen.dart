@@ -37,13 +37,19 @@ class _LogScreenState extends State<LogScreen> {
       _logs = logs;
     });
 
-    if (_autoScroll && _scrollController.hasClients) {
+    // ✅ Исправленная проверка
+    if (_autoScroll && _scrollController.hasClients && logs.isNotEmpty) {
+      // <-- Главное изменение: проверяем что логи не пустые
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+        // Дополнительная проверка перед анимацией
+        if (_scrollController.hasClients &&
+            _scrollController.position.maxScrollExtent > 0) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
       });
     }
   }
