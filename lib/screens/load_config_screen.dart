@@ -107,7 +107,7 @@ class _LoadConfigScreenState extends State<LoadConfigScreen> {
         foregroundColor: Colors.white,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context, false),
+          onPressed: () => Navigator.pop(context),
         ),
       ),
       body: SingleChildScrollView(
