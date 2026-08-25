@@ -10,7 +10,6 @@ import 'providers/theme_provider.dart';
 import 'services/modbus_service.dart';
 import 'services/modbus_rtu_service.dart';
 import 'services/config_service.dart';
-import 'services/config_manager.dart';
 import 'services/pin_service.dart';
 import 'screens/main_menu_screen.dart';
 import 'screens/system_screen.dart';
@@ -55,19 +54,14 @@ void main() {
   );
 }
 
-// ✅ Глобальный метод перезапуска
-void restartApp() {
-  runApp(const MyApp());
-}
-
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
   @override
-  State<MyApp> createState() => MyAppState();
+  State<MyApp> createState() => _MyAppState();
 }
 
-class MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> {
   ConfigModel? _config;
   late ModbusService _modbusService;
   late ModbusRtuService _modbusRtuService;
@@ -76,26 +70,16 @@ class MyAppState extends State<MyApp> {
   bool _isPinVerified = false;
   bool _isPinRequired = false;
 
-  // ✅ Метод для обновления конфигурации
-  void updateConfig(ConfigModel newConfig) {
-    setState(() {
-      _config = newConfig;
-    });
-    // Сохраняем как config.json
-    _saveActiveConfig();
-  }
-
   @override
   void initState() {
     super.initState();
     _modbusService = ModbusService();
     _modbusRtuService = ModbusRtuService();
+
     // ✅ Используем postFrameCallback для гарантии порядка
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initLoggerThenLoad();
     });
-    _checkPinAndLoad();
-    _initLogger();
   }
 
   Future<void> _initLoggerThenLoad() async {
@@ -104,19 +88,6 @@ class MyAppState extends State<MyApp> {
 
     // ✅ Потом загружаем конфиг и подключаемся
     await _checkPinAndLoad();
-  }
-
-  Future<void> _saveActiveConfig() async {
-    try {
-      final configService = ConfigService();
-      await configService.saveConfig(_config!);
-      LoggerService().log('✅ Конфигурация сохранена');
-    } catch (e) {
-      LoggerService().log(
-        '❌ Ошибка сохранения конфигурации: $e',
-        level: LogLevel.error,
-      );
-    }
   }
 
   Future<void> _initLogger() async {
@@ -146,28 +117,8 @@ class MyAppState extends State<MyApp> {
     final configService = ConfigService();
 
     try {
-      LoggerService().log('📂 Загрузка конфигурации...');
-
-      final activeConfigName = await ConfigManager.getActiveConfig();
-
-      ConfigModel config;
-      if (activeConfigName != null) {
-        final loaded = await ConfigManager.loadConfig(activeConfigName);
-        if (loaded != null) {
-          config = loaded;
-          LoggerService().log('✅ Загружен активный конфиг: $activeConfigName');
-          await configService.saveConfig(config);
-        } else {
-          config = await configService.loadConfig();
-          LoggerService().log(
-            '⚠️ Активный конфиг не найден, загружен стандартный',
-          );
-          await ConfigManager.setActiveConfig('');
-        }
-      } else {
-        config = await configService.loadConfig();
-        LoggerService().log('✅ Загружен стандартный конфиг');
-      }
+      LoggerService().log('📂 Загрузка стандартного конфига');
+      final config = await configService.loadConfig();
 
       if (mounted) {
         setState(() {
@@ -248,6 +199,18 @@ class MyAppState extends State<MyApp> {
     }
   }
 
+  Future<void> _reloadConfig() async {
+    setState(() {
+      _isLoading = true;
+    });
+    await _loadConfig();
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -256,6 +219,7 @@ class MyAppState extends State<MyApp> {
       );
     }
 
+    // ✅ Если PIN установлен и не проверен - показываем PinScreen
     if (_isPinRequired && !_isPinVerified) {
       return MaterialApp(
         title: 'PR200 Управление',
@@ -288,9 +252,7 @@ class MyAppState extends State<MyApp> {
                 ),
                 const SizedBox(height: 16),
                 ElevatedButton(
-                  onPressed: () {
-                    _loadConfig();
-                  },
+                  onPressed: _reloadConfig,
                   child: const Text('Повторить'),
                 ),
               ],
