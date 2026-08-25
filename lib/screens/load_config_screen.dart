@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/config_model.dart';
 import '../services/config_service.dart';
+import '../services/config_manager.dart';
 
 class LoadConfigScreen extends StatefulWidget {
   const LoadConfigScreen({super.key});
@@ -49,7 +50,6 @@ class _LoadConfigScreenState extends State<LoadConfigScreen> {
 
       final jsonData = jsonDecode(response.body) as Map<String, dynamic>;
 
-      // Проверяем структуру JSON
       if (!jsonData.containsKey('systems') ||
           !jsonData.containsKey('modbus_server')) {
         throw Exception('Неверный формат JSON: отсутствуют обязательные поля');
@@ -57,17 +57,37 @@ class _LoadConfigScreenState extends State<LoadConfigScreen> {
 
       final config = ConfigModel.fromJson(jsonData);
 
+      // Сохраняем в папку configs/
+      final projectName = config.projectName.replaceAll(' ', '_');
+      final fileName =
+          '${projectName}_${DateTime.now().millisecondsSinceEpoch}.json';
+      await ConfigManager.saveConfig(config, name: fileName);
+
+      // Активируем как текущую
+      await ConfigManager.setActiveConfig(fileName);
+
+      // Сохраняем как config.json для обратной совместимости
       final configService = ConfigService();
       await configService.saveConfig(config);
 
       setState(() {
-        _status = '✅ Конфигурация успешно загружена!';
+        _status = '✅ Конфигурация успешно загружена и сохранена!';
         _isLoading = false;
       });
 
-      Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Конфигурация "${config.projectName}" сохранена'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+
+      // ✅ Закрываем экран и возвращаем конфигурацию для обновления главного меню
+      Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted) {
-          Navigator.pop(context, true);
+          Navigator.pop(context, config);
         }
       });
     } catch (e) {

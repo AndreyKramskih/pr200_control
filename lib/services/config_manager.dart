@@ -1,22 +1,23 @@
-// lib/services/config_manager.dart (без path_provider)
+// lib/services/config_manager.dart
 import 'dart:convert';
 import 'dart:io';
 import '../models/config_model.dart';
+import 'logger_service.dart';
 
 class ConfigManager {
   static const String configsFolder = 'configs';
   static const String activeConfigFile = 'active_config.txt';
 
-  // Получить базовую директорию
+  /// Получить базовую директорию
   static String _getBaseDir() {
     if (Platform.isAndroid) {
-      return '/data/data/org.systherm.pr200/files';
+      return '/storage/emulated/0/Android/data/com.example.pr200_control/files';
     } else {
       return Directory.current.path;
     }
   }
 
-  // Сохранить конфигурацию
+  /// Сохранить конфигурацию
   static Future<void> saveConfig(ConfigModel config, {String? name}) async {
     try {
       final baseDir = _getBaseDir();
@@ -29,14 +30,18 @@ class ConfigManager {
           name ?? 'config_${DateTime.now().millisecondsSinceEpoch}.json';
       final file = File('${configDir.path}/$fileName');
       await file.writeAsString(jsonEncode(config.toJson()));
-      print('✅ Конфиг сохранен: $fileName');
+
+      LoggerService().log('✅ Конфиг сохранен: $fileName');
     } catch (e) {
-      print('❌ Ошибка сохранения конфига: $e');
+      LoggerService().log(
+        '❌ Ошибка сохранения конфига: $e',
+        level: LogLevel.error,
+      );
       rethrow;
     }
   }
 
-  // Получить список сохраненных конфигураций
+  /// Получить список сохраненных конфигураций
   static Future<List<String>> getConfigList() async {
     try {
       final baseDir = _getBaseDir();
@@ -49,12 +54,15 @@ class ConfigManager {
           .map((f) => f.path.split(Platform.pathSeparator).last)
           .toList();
     } catch (e) {
-      print('❌ Ошибка получения списка конфигов: $e');
+      LoggerService().log(
+        '❌ Ошибка получения списка конфигов: $e',
+        level: LogLevel.error,
+      );
       return [];
     }
   }
 
-  // Загрузить конфигурацию по имени
+  /// Загрузить конфигурацию по имени
   static Future<ConfigModel?> loadConfig(String name) async {
     try {
       final baseDir = _getBaseDir();
@@ -65,25 +73,31 @@ class ConfigManager {
       final json = jsonDecode(content) as Map<String, dynamic>;
       return ConfigModel.fromJson(json);
     } catch (e) {
-      print('❌ Ошибка загрузки конфига $name: $e');
+      LoggerService().log(
+        '❌ Ошибка загрузки конфига $name: $e',
+        level: LogLevel.error,
+      );
       return null;
     }
   }
 
-  // Активировать конфигурацию
+  /// Активировать конфигурацию
   static Future<void> setActiveConfig(String name) async {
     try {
       final baseDir = _getBaseDir();
       final file = File('$baseDir/$activeConfigFile');
       await file.writeAsString(name);
-      print('✅ Активный конфиг: $name');
+      LoggerService().log('✅ Активный конфиг: $name');
     } catch (e) {
-      print('❌ Ошибка активации конфига: $e');
+      LoggerService().log(
+        '❌ Ошибка активации конфига: $e',
+        level: LogLevel.error,
+      );
       rethrow;
     }
   }
 
-  // Получить активную конфигурацию
+  /// Получить активную конфигурацию
   static Future<String?> getActiveConfig() async {
     try {
       final baseDir = _getBaseDir();
@@ -91,34 +105,29 @@ class ConfigManager {
       if (!await file.exists()) return null;
       return await file.readAsString();
     } catch (e) {
-      print('❌ Ошибка получения активного конфига: $e');
+      LoggerService().log(
+        '❌ Ошибка получения активного конфига: $e',
+        level: LogLevel.error,
+      );
       return null;
     }
   }
 
-  // Удалить конфигурацию
+  /// Удалить конфигурацию
   static Future<void> deleteConfig(String name) async {
     try {
       final baseDir = _getBaseDir();
       final file = File('$baseDir/$configsFolder/$name');
       if (await file.exists()) {
         await file.delete();
-        print('✅ Конфиг удален: $name');
+        LoggerService().log('✅ Конфиг удален: $name');
       }
     } catch (e) {
-      print('❌ Ошибка удаления конфига $name: $e');
+      LoggerService().log(
+        '❌ Ошибка удаления конфига $name: $e',
+        level: LogLevel.error,
+      );
       rethrow;
-    }
-  }
-
-  // Проверить, существует ли конфигурация
-  static Future<bool> configExists(String name) async {
-    try {
-      final baseDir = _getBaseDir();
-      final file = File('$baseDir/$configsFolder/$name');
-      return await file.exists();
-    } catch (e) {
-      return false;
     }
   }
 }

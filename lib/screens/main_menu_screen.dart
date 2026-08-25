@@ -11,6 +11,8 @@ import '../screens/trends_screen.dart';
 import '../services/report_service.dart';
 import '../services/pin_service.dart';
 import '../screens/pin_screen.dart';
+import '../screens/config_list_screen.dart';
+import '../main.dart';
 
 class MainMenuScreen extends StatefulWidget {
   const MainMenuScreen({super.key});
@@ -29,6 +31,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     super.initState();
     _checkConnection();
 
+    // ✅ Подписываемся на изменения
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final modbus = Provider.of<ModbusService>(context, listen: false);
       final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
@@ -230,19 +233,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     }
   }
 
-  Future<void> _reloadConfig() async {
-    setState(() {});
-    _checkConnection();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Конфигурация обновлена'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final config = Provider.of<ConfigModel>(context);
@@ -256,11 +246,13 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: const Text('PR200'),
         backgroundColor: Colors.blue[800],
         foregroundColor: Colors.white,
         elevation: 4,
         actions: [
+          // Версия (долгое нажатие → Логи)
           GestureDetector(
             onLongPress: () {
               Navigator.push(
@@ -276,7 +268,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Text(
-                'v1.0.7',
+                'v1.0.6',
                 style: TextStyle(
                   color: Colors.white70,
                   fontSize: 13,
@@ -285,6 +277,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               ),
             ),
           ),
+          // Тема
           IconButton(
             icon: Icon(
               themeProvider.isDarkMode ? Icons.light_mode : Icons.dark_mode,
@@ -292,21 +285,61 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
             onPressed: themeProvider.toggleTheme,
             tooltip: themeProvider.isDarkMode ? 'Светлая тема' : 'Темная тема',
           ),
+          // Загрузка конфигурации
           IconButton(
             icon: const Icon(Icons.cloud_download),
             onPressed: () async {
-              final result = await Navigator.push<bool>(
+              final result = await Navigator.push<ConfigModel>(
                 context,
                 MaterialPageRoute(
                   builder: (context) => const LoadConfigScreen(),
                 ),
               );
-              if (result == true) {
-                _reloadConfig();
+              if (result != null && mounted) {
+                final myApp = context.findAncestorStateOfType<MyAppState>();
+                myApp?.updateConfig(result);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      '✅ Конфигурация "${result.projectName}" загружена',
+                    ),
+                    backgroundColor: Colors.green,
+                  ),
+                );
               }
             },
             tooltip: 'Загрузить конфигурацию',
           ),
+          // Список конфигураций
+          IconButton(
+            icon: const Icon(Icons.folder_open),
+            onPressed: () async {
+              final result = await Navigator.push<ConfigModel>(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => ConfigListScreen(
+                    onConfigSelected: (config) {
+                      Navigator.pop(context, config);
+                    },
+                  ),
+                ),
+              );
+              if (result != null && mounted) {
+                final myApp = context.findAncestorStateOfType<MyAppState>();
+                myApp?.updateConfig(result);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      '✅ Конфигурация "${result.projectName}" загружена',
+                    ),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
+            },
+            tooltip: 'Список конфигураций',
+          ),
+          // Подключение
           IconButton(
             icon: const Icon(Icons.settings_ethernet),
             onPressed: () {
@@ -314,19 +347,20 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
             },
             tooltip: 'Подключение',
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              _checkConnection();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Статус обновлен'),
-                  duration: Duration(seconds: 1),
-                ),
-              );
-            },
-            tooltip: 'Обновить статус',
-          ),
+          // // Обновить статус
+          // IconButton(
+          //   icon: const Icon(Icons.refresh),
+          //   onPressed: () {
+          //     _checkConnection();
+          //     ScaffoldMessenger.of(context).showSnackBar(
+          //       const SnackBar(
+          //         content: Text('Статус обновлен'),
+          //         duration: Duration(seconds: 1),
+          //       ),
+          //     );
+          //   },
+          //   tooltip: 'Обновить статус',
+          // ),
         ],
       ),
       body: Container(
