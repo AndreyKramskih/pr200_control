@@ -9,6 +9,7 @@ import '../services/modbus_service.dart';
 import '../services/modbus_rtu_service.dart';
 import '../services/config_service.dart';
 import '../services/logger_service.dart';
+import '../services/config_manager.dart';
 
 class ConnectionScreen extends StatefulWidget {
   const ConnectionScreen({super.key});
@@ -146,13 +147,14 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
         config.modbusServer.slaveId = slaveId;
         config.modbusServer.timeout = timeout;
 
-        // ✅ Сохраняем тип
         config.connectionType = 'tcp';
-        // ✅ Очищаем RTU настройки
         config.rtuConfig = null;
 
         final configService = ConfigService();
         await configService.saveConfig(config);
+
+        // ✅ СОХРАНЯЕМ В АКТИВНЫЙ КОНФИГ
+        await _saveToActiveConfig(config);
 
         setState(() {
           _status = '✅ Настройки сохранены';
@@ -169,7 +171,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
             ),
           );
         }
-        LoggerService().log('✅ Настройки сохранены');
+        LoggerService().log('✅ Настройки сохранены (TCP)');
       } catch (e) {
         setState(() {
           _status = '❌ Ошибка сохранения: $e';
@@ -201,7 +203,6 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
         config.modbusServer.slaveId = slaveId;
         config.modbusServer.timeout = timeout;
 
-        // ✅ Сохраняем RTU настройки
         config.connectionType = 'rtu';
         config.rtuConfig = RtuConfig(
           port: _selectedDevice!.deviceName,
@@ -213,6 +214,9 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
 
         final configService = ConfigService();
         await configService.saveConfig(config);
+
+        // ✅ СОХРАНЯЕМ В АКТИВНЫЙ КОНФИГ
+        await _saveToActiveConfig(config);
 
         setState(() {
           _status = '✅ RTU настройки сохранены';
@@ -244,6 +248,30 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
     }
   }
 
+  // ✅ НОВЫЙ МЕТОД ДЛЯ СОХРАНЕНИЯ В АКТИВНЫЙ КОНФИГ
+  Future<void> _saveToActiveConfig(ConfigModel config) async {
+    try {
+      final activeConfigName = await ConfigManager.getActiveConfig();
+      if (activeConfigName != null) {
+        // Обновляем существующий активный конфиг
+        await ConfigManager.saveConfig(config, name: activeConfigName);
+        LoggerService().log('✅ Активный конфиг обновлен: $activeConfigName');
+      } else {
+        // Если нет активного — создаем новый
+        final projectName = config.projectName.replaceAll(' ', '_');
+        final fileName =
+            '${projectName}_${DateTime.now().millisecondsSinceEpoch}.json';
+        await ConfigManager.saveConfig(config, name: fileName);
+        await ConfigManager.setActiveConfig(fileName);
+        LoggerService().log('✅ Создан новый активный конфиг: $fileName');
+      }
+    } catch (e) {
+      LoggerService().log(
+        '❌ Ошибка сохранения в активный конфиг: $e',
+        level: LogLevel.error,
+      );
+    }
+  }
   // lib/screens/connection_screen.dart
 
   Future<void> _connect(BuildContext context) async {
