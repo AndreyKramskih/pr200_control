@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/config_model.dart';
+import '../core/utils/theme_utils.dart';
 
 class SensorWidget extends StatelessWidget {
   final ItemConfig item;
@@ -9,15 +10,17 @@ class SensorWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = ThemeUtils.isDark(context);
     final isSetpoint = item.isSetpoint ?? false;
-    // Используем иконку из JSON или стандартную
     final icon = item.icon ?? (isSetpoint ? '🎯' : '🌡️');
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       elevation: 2,
-      color: isSetpoint ? Colors.blue[50] : null,
+      color: isSetpoint
+          ? (isDark ? Colors.blue[900]?.withOpacity(0.3) : Colors.blue[50])
+          : ThemeUtils.cardColor(context),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -33,7 +36,9 @@ class SensorWidget extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
-                      color: isSetpoint ? Colors.blue[800] : Colors.black54,
+                      color: isSetpoint
+                          ? (isDark ? Colors.blue[300] : Colors.blue[800])
+                          : ThemeUtils.textColor(context),
                     ),
                   ),
                 ),
@@ -44,14 +49,14 @@ class SensorWidget extends StatelessWidget {
                       vertical: 2,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.blue[200],
+                      color: isDark ? Colors.blue[800] : Colors.blue[200],
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       'УСТАВКА',
                       style: TextStyle(
                         fontSize: 10,
-                        color: Colors.blue[800],
+                        color: isDark ? Colors.white : Colors.blue[800],
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -69,14 +74,21 @@ class SensorWidget extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
-                    color: _getValueColor(),
+                    color: ThemeUtils.getSensorValueColor(
+                      context,
+                      value,
+                      min: item.min,
+                      max: item.max,
+                    ),
                   ),
                 ),
                 Text(
                   item.unit ?? '',
                   style: TextStyle(
                     fontSize: 16,
-                    color: isSetpoint ? Colors.blue[700] : Colors.black54,
+                    color: isSetpoint
+                        ? (isDark ? Colors.blue[300] : Colors.blue[700])
+                        : ThemeUtils.textSecondaryColor(context),
                   ),
                 ),
               ],
@@ -85,19 +97,5 @@ class SensorWidget extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  Color _getValueColor() {
-    if (value == null) return Colors.grey;
-    if (item.min != null && item.max != null) {
-      final numValue = double.tryParse(value.toString());
-      if (numValue != null) {
-        if (numValue < item.min! || numValue > item.max!) {
-          return Colors.red;
-        }
-        return Colors.green;
-      }
-    }
-    return Colors.black87;
   }
 }

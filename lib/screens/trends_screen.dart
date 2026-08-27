@@ -59,8 +59,10 @@ class _TrendsScreenState extends State<TrendsScreen> {
   }
 
   void _checkConnection() {
-    final modbusManager = ModbusManager(context);
+    // ✅ Проверка перед setState
+    if (!mounted) return;
 
+    final modbusManager = ModbusManager(context);
     setState(() {
       _connected = modbusManager.connected;
       _connectionType = _getConnectionType();
@@ -68,6 +70,9 @@ class _TrendsScreenState extends State<TrendsScreen> {
   }
 
   void _loadSensors() {
+    // ✅ Проверка перед setState
+    if (!mounted) return;
+
     final config = Provider.of<ConfigModel>(context, listen: false);
     final sensors = <TrendSeries>[];
 
@@ -125,6 +130,8 @@ class _TrendsScreenState extends State<TrendsScreen> {
   }
 
   void _toggleCollection() {
+    if (!mounted) return;
+
     if (_isCollecting) {
       _timer?.cancel();
       setState(() {
@@ -155,6 +162,11 @@ class _TrendsScreenState extends State<TrendsScreen> {
       }
 
       _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        // ✅ Проверка перед вызовом _collectData
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
         _collectData();
       });
 
@@ -166,15 +178,21 @@ class _TrendsScreenState extends State<TrendsScreen> {
   }
 
   Future<void> _collectData() async {
+    // ✅ Проверка в начале
+    if (!mounted) return;
+
     final modbusManager = ModbusManager(context);
 
     if (!modbusManager.connected) {
       _timer?.cancel();
-      setState(() {
-        _isCollecting = false;
-        _connected = false;
-        _connectionType = 'none';
-      });
+      // ✅ Проверка перед setState
+      if (mounted) {
+        setState(() {
+          _isCollecting = false;
+          _connected = false;
+          _connectionType = 'none';
+        });
+      }
       LoggerService().log(
         '⚠️ Сбор остановлен: нет подключения',
         level: LogLevel.warning,
@@ -215,9 +233,12 @@ class _TrendsScreenState extends State<TrendsScreen> {
       }
     }
 
-    setState(() {
-      _series = newSeries;
-    });
+    // ✅ Проверка перед setState
+    if (mounted) {
+      setState(() {
+        _series = newSeries;
+      });
+    }
   }
 
   Future<double?> _readSensorValue(
@@ -270,6 +291,9 @@ class _TrendsScreenState extends State<TrendsScreen> {
   }
 
   void _clearChart() {
+    // ✅ Проверка перед setState
+    if (!mounted) return;
+
     setState(() {
       _series = _series.map((s) => s.copyWith(points: [])).toList();
     });
@@ -277,6 +301,9 @@ class _TrendsScreenState extends State<TrendsScreen> {
   }
 
   void _toggleSensor(int index) {
+    // ✅ Проверка перед setState
+    if (!mounted) return;
+
     setState(() {
       _series[index] = _series[index].copyWith(
         isActive: !_series[index].isActive,
@@ -292,6 +319,9 @@ class _TrendsScreenState extends State<TrendsScreen> {
 
     // ✅ Периодически проверяем подключение и тип
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      // ✅ Проверка перед setState
+      if (!mounted) return;
+
       final modbusManager = ModbusManager(context);
       final connectionType = _getConnectionType();
       if (_connected != modbusManager.connected ||

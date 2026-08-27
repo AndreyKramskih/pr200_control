@@ -1,8 +1,7 @@
-// lib/widgets/valve_widget.dart
 import 'package:flutter/material.dart';
 import '../models/config_model.dart';
+import '../core/utils/theme_utils.dart';
 
-/// Виджет для отображения клапана
 class ValveWidget extends StatelessWidget {
   final SubmenuConfig submenu;
   final Map<String, dynamic> realtimeData;
@@ -23,6 +22,7 @@ class ValveWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = ThemeUtils.isDark(context);
     final isAnalog = submenu.analog ?? false;
 
     ItemConfig? positionItem;
@@ -51,13 +51,13 @@ class ValveWidget extends StatelessWidget {
           if (item.isSetpoint == true) continue;
         }
         final value = realtimeData[item.address.toString()];
-        children.add(_buildValveItem(item, value));
+        children.add(_buildValveItem(item, value, context));
       }
     }
 
     if (isAnalog && positionItem != null) {
       final value = realtimeData[positionItem.address.toString()];
-      children.add(_buildAnalogPosition(positionItem, value));
+      children.add(_buildAnalogPosition(positionItem, value, context));
     }
 
     if (isAnalog && setpointItem != null) {
@@ -65,38 +65,46 @@ class ValveWidget extends StatelessWidget {
           settingsData[setpointItem.address.toString()] ??
           setpointItem.defaultValue ??
           50;
-      children.add(_buildSetpointControl(setpointItem, value));
+      children.add(_buildSetpointControl(setpointItem, value, context));
     }
 
     if (submenu.controls != null && submenu.controls!.isNotEmpty) {
       children.addAll([
         const SizedBox(height: 16),
-        const Divider(),
-        const Padding(
-          padding: EdgeInsets.symmetric(vertical: 8),
+        Divider(color: ThemeUtils.dividerColor(context)),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
           child: Text(
             'Управление клапаном',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
-              color: Colors.blue,
+              color: isDark ? Colors.blue[300] : Colors.blue,
             ),
           ),
         ),
-        ...submenu.controls!.map((control) => _buildValveControl(control)),
+        ...submenu.controls!.map(
+          (control) => _buildValveControl(control, context),
+        ),
       ]);
     }
 
-    return ListView(padding: const EdgeInsets.all(16), children: children);
+    return Container(
+      color: ThemeUtils.scaffoldColor(context),
+      child: ListView(padding: const EdgeInsets.all(16), children: children),
+    );
   }
 
-  Widget _buildValveItem(ItemConfig item, dynamic value) {
+  Widget _buildValveItem(ItemConfig item, dynamic value, BuildContext context) {
+    final isDark = ThemeUtils.isDark(context);
+
     if (item.name.contains('Режим работы')) {
       final isManual = value != null && (value & (1 << (item.bit ?? 0))) != 0;
 
       return Card(
         margin: const EdgeInsets.only(bottom: 12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        color: ThemeUtils.cardColor(context),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(
@@ -107,9 +115,10 @@ class ValveWidget extends StatelessWidget {
                 children: [
                   Text(
                     item.name,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
+                      color: ThemeUtils.textColor(context),
                     ),
                   ),
                   Container(
@@ -118,7 +127,13 @@ class ValveWidget extends StatelessWidget {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: isManual ? Colors.orange[100] : Colors.green[100],
+                      color: isManual
+                          ? (isDark
+                                ? Colors.orange[800]!.withOpacity(0.3)
+                                : Colors.orange[100])
+                          : (isDark
+                                ? Colors.green[800]!.withOpacity(0.3)
+                                : Colors.green[100]),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -141,10 +156,10 @@ class ValveWidget extends StatelessWidget {
                       onPressed: () => onSwitchMode(),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: isManual
-                            ? Colors.grey[300]
+                            ? (isDark ? Colors.grey[600] : Colors.grey[300])
                             : Colors.green,
                         foregroundColor: isManual
-                            ? Colors.grey[600]
+                            ? (isDark ? Colors.white : Colors.grey[600])
                             : Colors.white,
                       ),
                       child: const Text('АВТО'),
@@ -157,10 +172,10 @@ class ValveWidget extends StatelessWidget {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: isManual
                             ? Colors.orange
-                            : Colors.grey[300],
+                            : (isDark ? Colors.grey[600] : Colors.grey[300]),
                         foregroundColor: isManual
                             ? Colors.white
-                            : Colors.grey[600],
+                            : (isDark ? Colors.white : Colors.grey[600]),
                       ),
                       child: const Text('РУЧНОЙ'),
                     ),
@@ -176,6 +191,7 @@ class ValveWidget extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: ThemeUtils.cardColor(context),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -183,7 +199,11 @@ class ValveWidget extends StatelessWidget {
           children: [
             Text(
               item.name,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: ThemeUtils.textColor(context),
+              ),
             ),
             const SizedBox(height: 8),
             Row(
@@ -205,7 +225,10 @@ class ValveWidget extends StatelessWidget {
                                   : 0]
                             : item.states![0])
                       : '--',
-                  style: const TextStyle(fontSize: 14, color: Colors.grey),
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: ThemeUtils.textSecondaryColor(context),
+                  ),
                 ),
               ],
             ),
@@ -215,10 +238,17 @@ class ValveWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildAnalogPosition(ItemConfig item, dynamic value) {
+  Widget _buildAnalogPosition(
+    ItemConfig item,
+    dynamic value,
+    BuildContext context,
+  ) {
+    final isDark = ThemeUtils.isDark(context);
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: ThemeUtils.cardColor(context),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -230,9 +260,10 @@ class ValveWidget extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   'Текущее положение',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
+                    color: ThemeUtils.textColor(context),
                   ),
                 ),
                 const Spacer(),
@@ -242,12 +273,15 @@ class ValveWidget extends StatelessWidget {
                     vertical: 2,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.grey[300],
+                    color: isDark ? Colors.grey[700] : Colors.grey[300],
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: const Text(
+                  child: Text(
                     'ТОЛЬКО ЧТЕНИЕ',
-                    style: TextStyle(fontSize: 9, color: Colors.grey),
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: isDark ? Colors.grey[400] : Colors.grey,
+                    ),
                   ),
                 ),
               ],
@@ -262,7 +296,9 @@ class ValveWidget extends StatelessWidget {
                         value: value != null
                             ? (value / 100).clamp(0.0, 1.0)
                             : 0.0,
-                        backgroundColor: Colors.grey[300],
+                        backgroundColor: isDark
+                            ? Colors.grey[700]
+                            : Colors.grey[300],
                         color: _getProgressColor(value),
                         minHeight: 12,
                         borderRadius: BorderRadius.circular(6),
@@ -270,9 +306,10 @@ class ValveWidget extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         value != null ? '$value%' : '--',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
+                          color: ThemeUtils.textColor(context),
                         ),
                       ),
                     ],
@@ -286,12 +323,18 @@ class ValveWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildSetpointControl(ItemConfig item, dynamic value) {
+  Widget _buildSetpointControl(
+    ItemConfig item,
+    dynamic value,
+    BuildContext context,
+  ) {
+    final isDark = ThemeUtils.isDark(context);
     final currentValue = value ?? item.defaultValue ?? 50;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: ThemeUtils.cardColor(context),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -303,9 +346,10 @@ class ValveWidget extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   'Заданное положение',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
+                    color: ThemeUtils.textColor(context),
                   ),
                 ),
               ],
@@ -321,6 +365,7 @@ class ValveWidget extends StatelessWidget {
                     max: (item.max ?? 100).toDouble(),
                     divisions: (item.max ?? 100) - (item.min ?? 0),
                     label: '${currentValue.round()}%',
+                    activeColor: isDark ? Colors.orange[300] : Colors.orange,
                     onChanged: (newValue) {
                       onSetSetpoint(item.address, newValue.round());
                     },
@@ -330,10 +375,10 @@ class ValveWidget extends StatelessWidget {
                   flex: 1,
                   child: Text(
                     '${currentValue.round()}%',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: Colors.orange,
+                      color: isDark ? Colors.orange[300] : Colors.orange,
                     ),
                   ),
                 ),
@@ -380,14 +425,18 @@ class ValveWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildValveControl(ControlConfig control) {
+  Widget _buildValveControl(ControlConfig control, BuildContext context) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: ThemeUtils.cardColor(context),
       child: ListTile(
         title: Text(
           control.name,
-          style: const TextStyle(fontWeight: FontWeight.w500),
+          style: TextStyle(
+            fontWeight: FontWeight.w500,
+            color: ThemeUtils.textColor(context),
+          ),
         ),
         trailing: const Icon(Icons.play_arrow, color: Colors.blue),
         onTap: () => onSendCommand(control.address, control.value),
