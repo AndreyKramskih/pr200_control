@@ -6,7 +6,7 @@ import '../models/config_model.dart';
 import '../models/modbus_data.dart';
 import '../services/modbus_manager.dart';
 import '../services/logger_service.dart';
-import '../services/modbus_rtu_service.dart';
+//import '../services/modbus_rtu_service.dart';
 import '../widgets/sensors_list_widget.dart';
 import '../widgets/relays_list_widget.dart';
 import '../widgets/pumps_list_widget.dart';
@@ -63,7 +63,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
     if (system == null) return false;
     final submenu = system.submenus[widget.submenuId];
     if (submenu == null) return false;
-
     return submenu.type == 'settings';
   }
 
@@ -73,7 +72,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
     if (system == null) return false;
     final submenu = system.submenus[widget.submenuId];
     if (submenu == null) return false;
-
     return submenu.type == 'pumps';
   }
 
@@ -93,10 +91,23 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
     super.dispose();
   }
 
+  // ==================== УНИВЕРСАЛЬНЫЙ МЕТОД ДЛЯ ЗАПИСИ ====================
+  Future<void> _performWrite(Future<void> Function() writeOperation) async {
+    // Останавливаем автообновление на время записи
+    _updateTimer?.cancel();
+    try {
+      await writeOperation();
+    } finally {
+      // Возобновляем автообновление только если это realtime-тип и виджет активен
+      if (_isRealtimeType && mounted) {
+        _startAutoUpdate();
+      }
+    }
+  }
+
   void _startAutoUpdate() {
     _updateTimer?.cancel();
     _updateTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      // ✅ Проверяем, что виджет еще активен
       if (!mounted) {
         timer.cancel();
         return;
@@ -106,18 +117,8 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
         return;
       }
 
-      try {
-        final rtuService = Provider.of<ModbusRtuService>(
-          context,
-          listen: false,
-        );
-        if (rtuService.isWriting) {
-          return;
-        }
-      } catch (e) {
-        // Игнорируем
-      }
-
+      // Проверяем, не занят ли сервис (блокировка сама управляет очередью)
+      // Больше не нужна проверка isWriting, просто пытаемся обновить
       if (!_isLoading) {
         _updateRealtimeData();
       }
@@ -139,8 +140,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       setState(() {
         _isDropdownOpen = false;
       });
-      // Не вызываем _updateRealtimeData() здесь,
-      // так как это делается в таймере после закрытия
     }
   }
 
@@ -216,7 +215,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       if (intAddresses.isNotEmpty) {
         final intResults = await modbusManager.readMultipleRegisters(
           intAddresses,
-          // useCache: true,  // ✅ Раскомментировать для включения кеша
         );
         for (final entry in intResults.entries) {
           newData['${entry.key}'] = entry.value;
@@ -226,7 +224,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       if (floatAddresses.isNotEmpty) {
         final floatResults = await modbusManager.readMultipleFloats(
           floatAddresses,
-          // useCache: true,  // ✅ Раскомментировать для включения кеша
         );
         for (final entry in floatResults.entries) {
           newData['${entry.key}'] = entry.value;
@@ -261,7 +258,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
         try {
           final regValue = await modbusManager.readRegister(address);
-          // useCache: true,  // ✅ Раскомментировать для включения кеша
 
           if (regValue != null) {
             for (final alarm in alarmsForAddress) {
@@ -306,14 +302,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       return;
     }
 
-    try {
-      final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
-      if (rtuService.isWriting) {
-        return;
-      }
-    } catch (e) {
-      // Игнорируем
-    }
+    // Проверка блокировки не нужна – она внутри сервиса
 
     final config = Provider.of<ConfigModel>(context, listen: false);
     final modbusManager = ModbusManager(context);
@@ -343,7 +332,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       if (intAddresses.isNotEmpty) {
         final intResults = await modbusManager.readMultipleRegisters(
           intAddresses,
-          // useCache: true,  // ✅ Раскомментировать для включения кеша
         );
         for (final entry in intResults.entries) {
           newData['${entry.key}'] = entry.value;
@@ -353,7 +341,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       if (floatAddresses.isNotEmpty) {
         final floatResults = await modbusManager.readMultipleFloats(
           floatAddresses,
-          // useCache: true,  // ✅ Раскомментировать для включения кеша
         );
         for (final entry in floatResults.entries) {
           newData['${entry.key}'] = entry.value;
@@ -399,7 +386,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
         try {
           final regValue = await modbusManager.readRegister(address);
-          // useCache: true,  // ✅ Раскомментировать для включения кеша
 
           if (regValue != null) {
             for (final alarm in alarmsForAddress) {
@@ -459,7 +445,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
     for (final item in submenu.items!) {
       if (item.modeAddress != null) {
         final value = await modbusManager.readRegister(item.modeAddress!);
-        // useCache: true,  // ✅ Раскомментировать для включения кеша
         LoggerService().log(
           '📊 Режим "${item.name}" (адрес ${item.modeAddress}) = $value',
         );
@@ -515,7 +500,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
     if (intAddresses.isNotEmpty) {
       final intResults = await modbusManager.readMultipleRegisters(
         intAddresses,
-        // useCache: true,  // ✅ Раскомментировать для включения кеша
       );
       for (final entry in intResults.entries) {
         final item = addressToItem[entry.key];
@@ -529,7 +513,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
     if (floatAddresses.isNotEmpty) {
       final floatResults = await modbusManager.readMultipleFloats(
         floatAddresses,
-        // useCache: true,  // ✅ Раскомментировать для включения кеша
       );
       for (final entry in floatResults.entries) {
         final item = addressToItem[entry.key];
@@ -620,140 +603,138 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   // ==================== СОХРАНЕНИЕ НАСТРОЕК ====================
 
   Future<void> _saveAllSettings() async {
-    if (!mounted) return;
+    await _performWrite(() async {
+      final modbusManager = ModbusManager(context);
+      final config = Provider.of<ConfigModel>(context, listen: false);
 
-    final modbusManager = ModbusManager(context);
-    final config = Provider.of<ConfigModel>(context, listen: false);
+      if (!modbusManager.connected) {
+        _showError('Нет подключения к ПЛК');
+        return;
+      }
 
-    if (!modbusManager.connected) {
-      _showError('Нет подключения к ПЛК');
-      return;
-    }
+      final system = config.getSystem(widget.systemId);
+      if (system == null) return;
 
-    final system = config.getSystem(widget.systemId);
-    if (system == null) return;
+      final submenu = system.submenus[widget.submenuId];
+      if (submenu == null) return;
 
-    final submenu = system.submenus[widget.submenuId];
-    if (submenu == null) return;
+      final Map<int, dynamic> changedValues = <int, dynamic>{};
 
-    final Map<int, dynamic> changedValues = <int, dynamic>{};
+      if (submenu.groups != null && submenu.groups!.isNotEmpty) {
+        for (final group in submenu.groups!) {
+          for (final item in group.items) {
+            final key = '${item.address}';
+            final newValue = _settingsData[key];
+            if (newValue != null) {
+              dynamic currentValue;
+              if (item.type == 'float') {
+                currentValue = await modbusManager.readFloat(item.address);
+              } else {
+                currentValue = await modbusManager.readRegister(
+                  item.address,
+                  type: item.type,
+                );
+              }
 
-    if (submenu.groups != null && submenu.groups!.isNotEmpty) {
-      for (final group in submenu.groups!) {
-        for (final item in group.items) {
-          final key = '${item.address}';
-          final newValue = _settingsData[key];
-          if (newValue != null) {
-            dynamic currentValue;
-            if (item.type == 'float') {
-              currentValue = await modbusManager.readFloat(item.address);
-              // useCache: true,  // ✅ Раскомментировать для включения кеша
-            } else {
-              currentValue = await modbusManager.readRegister(
-                item.address,
-                type: item.type,
-              );
-              // useCache: true,  // ✅ Раскомментировать для включения кеша
-            }
-
-            if (currentValue != null && newValue != currentValue) {
-              changedValues[item.address] = newValue;
+              if (currentValue != null && newValue != currentValue) {
+                changedValues[item.address] = newValue;
+              }
             }
           }
         }
       }
-    }
 
-    if (changedValues.isEmpty) {
-      _showSuccess('Нет измененных параметров для сохранения');
-      return;
-    }
-    LoggerService().log(
-      '🔵 Сохранение ${changedValues.length} измененных параметров...)',
-    );
+      if (changedValues.isEmpty) {
+        _showSuccess('Нет измененных параметров для сохранения');
+        return;
+      }
+      LoggerService().log(
+        '🔵 Сохранение ${changedValues.length} измененных параметров...)',
+      );
 
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Сохранить параметры?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Будет сохранено ${changedValues.length} параметров:'),
-            const SizedBox(height: 8),
-            ...changedValues.keys.take(10).map((addr) {
-              final item = _findItemByAddress(submenu, addr);
-              final value = changedValues[addr];
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Text(
-                  '• ${item?.name ?? 'Адрес $addr'}: $value',
-                  style: const TextStyle(fontSize: 14),
-                ),
-              );
-            }).toList(),
-            if (changedValues.length > 10)
-              Text('... и еще ${changedValues.length - 10} параметров'),
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Сохранить параметры?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Будет сохранено ${changedValues.length} параметров:'),
+              const SizedBox(height: 8),
+              ...changedValues.keys.take(10).map((addr) {
+                final item = _findItemByAddress(submenu, addr);
+                final value = changedValues[addr];
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Text(
+                    '• ${item?.name ?? 'Адрес $addr'}: $value',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                );
+              }).toList(),
+              if (changedValues.length > 10)
+                Text('... и еще ${changedValues.length - 10} параметров'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Отмена'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+              child: const Text('Сохранить'),
+            ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-            child: const Text('Сохранить'),
-          ),
-        ],
-      ),
-    );
+      );
 
-    if (confirm != true || !mounted) return;
+      if (confirm != true || !mounted) return;
 
-    final intValues = <int, int>{};
-    final floatValues = <int, double>{};
+      final intValues = <int, int>{};
+      final floatValues = <int, double>{};
 
-    for (final entry in changedValues.entries) {
-      final item = _findItemByAddress(submenu, entry.key);
-      if (item != null) {
-        if (item.type == 'float') {
-          floatValues[entry.key] = double.parse(entry.value.toString());
-        } else {
-          intValues[entry.key] = int.parse(entry.value.toString());
+      for (final entry in changedValues.entries) {
+        final item = _findItemByAddress(submenu, entry.key);
+        if (item != null) {
+          if (item.type == 'float') {
+            floatValues[entry.key] = double.parse(entry.value.toString());
+          } else {
+            intValues[entry.key] = int.parse(entry.value.toString());
+          }
         }
       }
-    }
 
-    bool allSuccess = true;
+      bool allSuccess = true;
 
-    if (intValues.isNotEmpty) {
-      final success = await modbusManager.writeMultipleRegisters(
-        intValues,
-        type: 'int',
-      );
-      if (!success) allSuccess = false;
-    }
-
-    if (floatValues.isNotEmpty) {
-      final success = await modbusManager.writeMultipleRegisters(
-        floatValues,
-        type: 'float',
-      );
-      if (!success) allSuccess = false;
-    }
-
-    if (mounted) {
-      if (allSuccess) {
-        _showSuccess('Все параметры сохранены!');
-        await _reloadSettings();
-      } else {
-        _showError('Ошибка при сохранении некоторых параметров');
-        await _reloadSettings();
+      if (intValues.isNotEmpty) {
+        final success = await modbusManager.writeMultipleRegisters(
+          intValues,
+          type: 'int',
+        );
+        if (!success) allSuccess = false;
       }
-    }
+
+      if (floatValues.isNotEmpty) {
+        final success = await modbusManager.writeMultipleRegisters(
+          floatValues,
+          type: 'float',
+        );
+        if (!success) allSuccess = false;
+      }
+
+      if (mounted) {
+        if (allSuccess) {
+          _showSuccess('Все параметры сохранены!');
+          await _reloadSettings();
+        } else {
+          _showError('Ошибка при сохранении некоторых параметров');
+          await _reloadSettings();
+        }
+      }
+    });
   }
 
   ItemConfig? _findItemByAddress(SubmenuConfig submenu, int address) {
@@ -772,84 +753,80 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   // ==================== КЛАПАН ====================
 
   Future<void> _switchValveMode() async {
-    if (!mounted) return;
+    await _performWrite(() async {
+      if (!mounted) return;
 
-    final config = Provider.of<ConfigModel>(context, listen: false);
-    final system = config.getSystem(widget.systemId);
-    if (system == null) return;
-    final submenu = system.submenus[widget.submenuId];
-    if (submenu == null) return;
+      final config = Provider.of<ConfigModel>(context, listen: false);
+      final system = config.getSystem(widget.systemId);
+      if (system == null) return;
+      final submenu = system.submenus[widget.submenuId];
+      if (submenu == null) return;
 
-    ItemConfig? modeItem;
-    if (submenu.items != null) {
-      for (final item in submenu.items!) {
-        if (item.name.contains('Режим работы')) {
-          modeItem = item;
-          break;
+      ItemConfig? modeItem;
+      if (submenu.items != null) {
+        for (final item in submenu.items!) {
+          if (item.name.contains('Режим работы')) {
+            modeItem = item;
+            break;
+          }
         }
       }
-    }
-    if (modeItem == null) return;
+      if (modeItem == null) return;
 
-    // ✅ Приостанавливаем автообновление
-    _updateTimer?.cancel();
+      final modbusManager = ModbusManager(context);
 
-    final modbusManager = ModbusManager(context);
+      try {
+        final currentValue = await modbusManager.readRegister(modeItem.address);
+        if (currentValue == null) {
+          if (mounted) _showError('Не удалось прочитать текущий режим');
+          return;
+        }
 
-    try {
-      final currentValue = await modbusManager.readRegister(modeItem.address);
-      // useCache: true,  // ✅ Раскомментировать для включения кеша
-      if (currentValue == null) {
-        if (mounted) _showError('Не удалось прочитать текущий режим');
-        return;
-      }
+        final isManual = (currentValue & (1 << (modeItem.bit ?? 0))) != 0;
+        final newValue = isManual
+            ? currentValue & ~(1 << (modeItem.bit ?? 0))
+            : currentValue | (1 << (modeItem.bit ?? 0));
 
-      final isManual = (currentValue & (1 << (modeItem.bit ?? 0))) != 0;
-      final newValue = isManual
-          ? currentValue & ~(1 << (modeItem.bit ?? 0))
-          : currentValue | (1 << (modeItem.bit ?? 0));
-
-      final success = await modbusManager.writeRegister(
-        modeItem.address,
-        newValue,
-      );
-
-      if (success && mounted) {
-        _showSuccess(
-          isManual ? 'Режим переключен на АВТО' : 'Режим переключен на РУЧНОЙ',
+        final success = await modbusManager.writeRegister(
+          modeItem.address,
+          newValue,
         );
-        // ✅ Обновляем данные после записи
-        await _loadRealtimeData(submenu);
-      } else if (mounted) {
-        _showError('Не удалось переключить режим');
+
+        if (success && mounted) {
+          _showSuccess(
+            isManual
+                ? 'Режим переключен на АВТО'
+                : 'Режим переключен на РУЧНОЙ',
+          );
+          await _loadRealtimeData(submenu);
+        } else if (mounted) {
+          _showError('Не удалось переключить режим');
+        }
+      } catch (e) {
+        LoggerService().log(
+          '❌ Ошибка переключения режима клапана: $e',
+          level: LogLevel.error,
+        );
+        if (mounted) _showError('Ошибка: $e');
       }
-    } catch (e) {
-      LoggerService().log(
-        '❌ Ошибка переключения режима клапана: $e',
-        level: LogLevel.error,
-      );
-      if (mounted) _showError('Ошибка: $e');
-    } finally {
-      // ✅ Возобновляем автообновление (только если это realtime тип)
-      if (_isRealtimeType && mounted) {
-        _startAutoUpdate();
-      }
-    }
+    });
   }
 
   Future<void> _sendValveCommand(int address, int value) async {
-    if (!mounted) return;
+    await _performWrite(() async {
+      if (!mounted) return;
 
-    final modbusManager = ModbusManager(context);
-    final success = await modbusManager.writeRegister(address, value);
-    if (mounted) {
-      if (success) {
-        _showSuccess('Команда отправлена');
-        await _updateRealtimeData();
-      } else {
-        _showError('Ошибка отправки команды');
+      final modbusManager = ModbusManager(context);
+      final success = await modbusManager.writeRegister(address, value);
+      if (mounted) {
+        if (success) {
+          _showSuccess('Команда отправлена');
+          await _updateRealtimeData();
+        } else {
+          _showError('Ошибка отправки команды');
+        }
       }
-    }
+    });
   }
 
   void _onSetSetpoint(int address, dynamic value) {
@@ -863,191 +840,191 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   // ==================== АВАРИИ ====================
 
   Future<void> _resetAlarms() async {
-    if (!mounted) return;
+    await _performWrite(() async {
+      if (!mounted) return;
 
-    final config = Provider.of<ConfigModel>(context, listen: false);
-    final system = config.getSystem(widget.systemId);
-    if (system == null) return;
-    final submenu = system.submenus[widget.submenuId];
-    if (submenu == null) return;
+      final config = Provider.of<ConfigModel>(context, listen: false);
+      final system = config.getSystem(widget.systemId);
+      if (system == null) return;
+      final submenu = system.submenus[widget.submenuId];
+      if (submenu == null) return;
 
-    if (submenu.resetAddress == null) return;
+      if (submenu.resetAddress == null) return;
 
-    final modbusManager = ModbusManager(context);
+      final modbusManager = ModbusManager(context);
 
-    if (!modbusManager.connected) {
-      if (mounted) {
+      if (!modbusManager.connected) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Нет подключения к контроллеру'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Сброс аварий'),
+          content: const Text(
+            'Вы уверены, что хотите сбросить все активные аварии?\n\n'
+            '⚠️ Сброс возможен только если причина аварии устранена.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Отмена'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Сбросить'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirm != true || !mounted) return;
+
+      final resetAddress = submenu.resetAddress!;
+      final resetBit = submenu.resetBit ?? 3;
+
+      // Останавливаем таймер на время сброса (уже остановлен в _performWrite)
+      setState(() {
+        _isResettingAlarms = true;
+        _isLoading = true;
+      });
+
+      try {
+        LoggerService().log(
+          '🔄 Сброс аварий: адрес=$resetAddress, бит=$resetBit',
+        );
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Нет подключения к контроллеру'),
-            backgroundColor: Colors.red,
+            content: Text('⏳ Сброс аварий...'),
+            duration: Duration(seconds: 1),
           ),
         );
+
+        // 1. Читаем текущее значение
+        final currentValue = await modbusManager.readRegister(resetAddress);
+        if (currentValue == null) {
+          _showError('Не удалось прочитать статус');
+          return;
+        }
+
+        // 2. Устанавливаем бит сброса
+        final valueWithReset = currentValue | (1 << resetBit);
+        LoggerService().log(
+          '🔧 Устанавливаем бит $resetBit: $currentValue → $valueWithReset',
+        );
+
+        final success1 = await modbusManager.writeRegister(
+          resetAddress,
+          valueWithReset,
+        );
+        if (!success1) {
+          _showError('Ошибка установки бита сброса');
+          return;
+        }
+
+        // 3. Ждем, пока ПЛК обработает
+        await Future.delayed(const Duration(milliseconds: 300));
+
+        // 4. Снимаем бит сброса
+        final valueAfterReset = valueWithReset & ~(1 << resetBit);
+        LoggerService().log(
+          '🔧 Снимаем бит $resetBit: $valueWithReset → $valueAfterReset',
+        );
+
+        final success2 = await modbusManager.writeRegister(
+          resetAddress,
+          valueAfterReset,
+        );
+        if (!success2) {
+          _showError('Ошибка снятия бита сброса');
+          return;
+        }
+
+        // 5. Ждем, пока ПЛК применит изменения
+        await Future.delayed(const Duration(milliseconds: 500));
+
+        // 6. Обновляем список аварий
+        await _loadRealtimeData(submenu);
+
+        // 7. Проверяем результат
+        if (_alarms.isEmpty) {
+          _showSuccess('✅ Все аварии сброшены!');
+        } else {
+          _showWarning(
+            '⚠️ Остались активные аварии: ${_alarms.map((a) => a.name).join(", ")}\n'
+            'Устраните причину и повторите сброс.',
+          );
+        }
+      } catch (e) {
+        LoggerService().log(
+          '❌ Ошибка сброса аварий: $e',
+          level: LogLevel.error,
+        );
+        _showError('Ошибка сброса аварий: $e');
+      } finally {
+        setState(() {
+          _isResettingAlarms = false;
+          _isLoading = false;
+        });
       }
-      return;
-    }
-
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Сброс аварий'),
-        content: const Text(
-          'Вы уверены, что хотите сбросить все активные аварии?\n\n'
-          '⚠️ Сброс возможен только если причина аварии устранена.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Отмена'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Сбросить'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true || !mounted) return;
-
-    final resetAddress = submenu.resetAddress!;
-    final resetBit = submenu.resetBit ?? 3;
-
-    // Останавливаем таймер на время сброса
-    _updateTimer?.cancel();
-    setState(() {
-      _isResettingAlarms = true;
-      _isLoading = true;
     });
-
-    try {
-      LoggerService().log(
-        '🔄 Сброс аварий: адрес=$resetAddress, бит=$resetBit',
-      );
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('⏳ Сброс аварий...'),
-          duration: Duration(seconds: 1),
-        ),
-      );
-
-      // 1. Читаем текущее значение
-      final currentValue = await modbusManager.readRegister(resetAddress);
-      // useCache: true,  // ✅ Раскомментировать для включения кеша
-      if (currentValue == null) {
-        _showError('Не удалось прочитать статус');
-        return;
-      }
-
-      // 2. Устанавливаем бит сброса
-      final valueWithReset = currentValue | (1 << resetBit);
-      LoggerService().log(
-        '🔧 Устанавливаем бит $resetBit: $currentValue → $valueWithReset',
-      );
-
-      final success1 = await modbusManager.writeRegister(
-        resetAddress,
-        valueWithReset,
-      );
-      if (!success1) {
-        _showError('Ошибка установки бита сброса');
-        return;
-      }
-
-      // 3. Ждем, пока ПЛК обработает
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      // 4. Снимаем бит сброса
-      final valueAfterReset = valueWithReset & ~(1 << resetBit);
-      LoggerService().log(
-        '🔧 Снимаем бит $resetBit: $valueWithReset → $valueAfterReset',
-      );
-
-      final success2 = await modbusManager.writeRegister(
-        resetAddress,
-        valueAfterReset,
-      );
-      if (!success2) {
-        _showError('Ошибка снятия бита сброса');
-        return;
-      }
-
-      // 5. Ждем, пока ПЛК применит изменения
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      // 6. Обновляем список аварий
-      await _loadRealtimeData(submenu);
-
-      // 7. Проверяем результат
-      if (_alarms.isEmpty) {
-        _showSuccess('✅ Все аварии сброшены!');
-      } else {
-        _showWarning(
-          '⚠️ Остались активные аварии: ${_alarms.map((a) => a.name).join(", ")}\n'
-          'Устраните причину и повторите сброс.',
-        );
-      }
-    } catch (e) {
-      LoggerService().log('❌ Ошибка сброса аварий: $e', level: LogLevel.error);
-      _showError('Ошибка сброса аварий: $e');
-    } finally {
-      // Возобновляем таймер
-      setState(() {
-        _isResettingAlarms = false;
-        _isLoading = false;
-      });
-      if (_isRealtimeType && mounted) {
-        _startAutoUpdate();
-      }
-    }
   }
 
   // ==================== СТАРТ/СТОП ====================
 
   Future<void> _toggleStartStop() async {
-    if (!mounted) return;
+    await _performWrite(() async {
+      if (!mounted) return;
 
-    final config = Provider.of<ConfigModel>(context, listen: false);
-    final system = config.getSystem(widget.systemId);
-    if (system == null) return;
-    final submenu = system.submenus[widget.submenuId];
-    if (submenu == null) return;
-    if (submenu.items == null || submenu.items!.isEmpty) return;
+      final config = Provider.of<ConfigModel>(context, listen: false);
+      final system = config.getSystem(widget.systemId);
+      if (system == null) return;
+      final submenu = system.submenus[widget.submenuId];
+      if (submenu == null) return;
+      if (submenu.items == null || submenu.items!.isEmpty) return;
 
-    final item = submenu.items!.first;
-    final currentValue = _realtimeData[item.address.toString()] ?? 0;
-    final isOn = (currentValue & (1 << (item.bit ?? 0))) != 0;
+      final item = submenu.items!.first;
+      final currentValue = _realtimeData[item.address.toString()] ?? 0;
+      final isOn = (currentValue & (1 << (item.bit ?? 0))) != 0;
 
-    final newRegister = isOn
-        ? currentValue & ~(1 << (item.bit ?? 0))
-        : currentValue | (1 << (item.bit ?? 0));
+      final newRegister = isOn
+          ? currentValue & ~(1 << (item.bit ?? 0))
+          : currentValue | (1 << (item.bit ?? 0));
 
-    final modbusManager = ModbusManager(context);
+      final modbusManager = ModbusManager(context);
 
-    try {
-      final success = await modbusManager.writeRegister(
-        item.address,
-        newRegister,
-      );
+      try {
+        final success = await modbusManager.writeRegister(
+          item.address,
+          newRegister,
+        );
 
-      if (mounted) {
-        if (success) {
-          _showSuccess(isOn ? 'Выключено' : 'Включено');
-          // ✅ Обновляем данные после записи
-          await _loadRealtimeData(submenu);
-        } else {
-          _showError('Ошибка изменения состояния');
+        if (mounted) {
+          if (success) {
+            _showSuccess(isOn ? 'Выключено' : 'Включено');
+            await _loadRealtimeData(submenu);
+          } else {
+            _showError('Ошибка изменения состояния');
+          }
         }
+      } catch (e) {
+        LoggerService().log('❌ Ошибка старт/стоп: $e', level: LogLevel.error);
+        if (mounted) _showError('Ошибка: $e');
       }
-    } catch (e) {
-      LoggerService().log('❌ Ошибка старт/стоп: $e', level: LogLevel.error);
-      if (mounted) _showError('Ошибка: $e');
-    }
+    });
   }
 
   // ==================== ПАРАМЕТРЫ (НАСТРОЙКИ) ====================
@@ -1061,32 +1038,34 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   }
 
   Future<void> _onParamSave(ItemConfig item, dynamic newValue) async {
-    if (!mounted) return;
+    await _performWrite(() async {
+      if (!mounted) return;
 
-    final modbusManager = ModbusManager(context);
-    LoggerService().log(
-      '🔵 Сохранение: ${item.name} = $newValue в адрес ${item.address}',
-    );
-
-    final success = await modbusManager.writeRegister(
-      item.address,
-      newValue,
-      type: item.type,
-    );
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(success ? 'Параметр сохранен' : 'Ошибка сохранения'),
-          backgroundColor: success ? Colors.green : Colors.red,
-          duration: const Duration(seconds: 2),
-        ),
+      final modbusManager = ModbusManager(context);
+      LoggerService().log(
+        '🔵 Сохранение: ${item.name} = $newValue в адрес ${item.address}',
       );
-    }
 
-    if (success && mounted) {
-      await _reloadSettings();
-    }
+      final success = await modbusManager.writeRegister(
+        item.address,
+        newValue,
+        type: item.type,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success ? 'Параметр сохранен' : 'Ошибка сохранения'),
+            backgroundColor: success ? Colors.green : Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+
+      if (success && mounted) {
+        await _reloadSettings();
+      }
+    });
   }
 
   Future<dynamic> _onParamLoad(ItemConfig item) async {
@@ -1096,13 +1075,11 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
     dynamic loadedValue;
     if (item.type == 'float') {
       loadedValue = await modbusManager.readFloat(item.address);
-      // useCache: true,  // ✅ Раскомментировать для включения кеша
     } else {
       loadedValue = await modbusManager.readRegister(
         item.address,
         type: item.type,
       );
-      // useCache: true,  // ✅ Раскомментировать для включения кеша
     }
     if (loadedValue != null && mounted) {
       setState(() {
@@ -1245,6 +1222,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
           onDropdownOpen: _onDropdownOpen,
           onDropdownClose: _onDropdownClose,
           onModeChanged: _onModeChanged,
+          onModeWrite: _handlePumpModeWrite, // новый колбэк
         );
       case 'valve':
         return ValveWidget(
@@ -1281,5 +1259,19 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       default:
         return const Center(child: Text('Неизвестный тип подменю'));
     }
+  }
+
+  // ==================== НОВЫЙ МЕТОД ДЛЯ ЗАПИСИ РЕЖИМА НАСОСА ====================
+  Future<void> _handlePumpModeWrite(int address, int newValue) async {
+    await _performWrite(() async {
+      final modbusManager = ModbusManager(context);
+      final success = await modbusManager.writeRegister(address, newValue);
+      if (success && mounted) {
+        _onModeChanged(address, newValue);
+        _showSuccess('Режим насоса изменен');
+      } else if (mounted) {
+        _showError('Ошибка изменения режима');
+      }
+    });
   }
 }

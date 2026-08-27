@@ -1,8 +1,7 @@
 // lib/widgets/pump_widget.dart
 import 'package:flutter/material.dart';
-
 import '../models/config_model.dart';
-import '../services/modbus_manager.dart';
+// import '../services/modbus_manager.dart'; // ❌ Удаляем – больше не нужен
 
 class PumpWidget extends StatelessWidget {
   final ItemConfig item;
@@ -12,6 +11,8 @@ class PumpWidget extends StatelessWidget {
   final String? pumpId;
   final VoidCallback? onDropdownOpen;
   final VoidCallback? onDropdownClose;
+  // ✅ Новый колбэк для записи режима
+  final void Function(int, int)? onModeWrite;
 
   const PumpWidget({
     super.key,
@@ -22,6 +23,7 @@ class PumpWidget extends StatelessWidget {
     this.pumpId,
     this.onDropdownOpen,
     this.onDropdownClose,
+    this.onModeWrite, // добавляем
   });
 
   @override
@@ -124,8 +126,6 @@ class PumpWidget extends StatelessWidget {
   }
 
   Widget _buildModeDropdown(BuildContext context) {
-    final modbusManager = ModbusManager(context);
-
     final dropdownKey = ValueKey('dropdown_${pumpId ?? item.address}');
 
     int currentMode = 0;
@@ -172,9 +172,7 @@ class PumpWidget extends StatelessWidget {
             '🔵 Изменение режима: $pumpName -> ${modeStates[newValue]} (адрес $address)',
           );
 
-          // ❌ НЕ вызываем onDropdownClose здесь!
-          // onDropdownClose будет вызван ПОСЛЕ завершения записи
-
+          // Показываем уведомление
           if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -184,43 +182,28 @@ class PumpWidget extends StatelessWidget {
             );
           }
 
-          final success = await modbusManager.writeRegister(address, newValue);
-
-          // ✅ Закрываем dropdown ПОСЛЕ завершения записи
-          if (onDropdownClose != null) {
-            onDropdownClose!();
-          }
-
-          // ✅ Дополнительная задержка после записи
-          await Future.delayed(const Duration(milliseconds: 300));
-
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).clearSnackBars();
-
-            if (success) {
-              if (onModeChanged != null) {
-                onModeChanged!(newValue);
-              }
-
+          // ✅ Вызываем колбэк для записи (он обёрнут в _performWrite)
+          if (onModeWrite != null) {
+            onModeWrite!(address, newValue);
+          } else {
+            // Если колбэк не передан – показываем ошибку
+            if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    '✅ Режим насоса "$pumpName" изменен на "${modeStates[newValue]}"',
-                  ),
-                  backgroundColor: Colors.green,
-                  duration: const Duration(seconds: 2),
-                ),
-              );
-            } else {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('❌ Ошибка изменения режима'),
+                const SnackBar(
+                  content: Text('❌ Не удалось изменить режим: колбэк не задан'),
                   backgroundColor: Colors.red,
-                  duration: const Duration(seconds: 2),
                 ),
               );
             }
           }
+
+          // Закрываем dropdown после инициирования записи
+          if (onDropdownClose != null) {
+            onDropdownClose!();
+          }
+
+          // Дополнительная задержка для обновления UI (не обязательна)
+          await Future.delayed(const Duration(milliseconds: 300));
         },
       ),
     );

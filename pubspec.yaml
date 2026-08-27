@@ -48,7 +48,7 @@ dependencies:
   # Новая зависимость для Modbus RTU через USB
   #usb_serial: ^0.5.2
   # Для работы с последовательным портом (работает на Android)
-
+  synchronized: ^3.1.0
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

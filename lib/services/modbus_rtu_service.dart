@@ -7,6 +7,7 @@ import 'package:flutter_serial_communication/models/device_info.dart';
 import '../models/config_model.dart';
 import '../models/modbus_data.dart';
 import 'logger_service.dart';
+import 'package:synchronized/synchronized.dart';
 
 /// Сервис Modbus RTU через USB (реальная реализация)
 class ModbusRtuService extends ChangeNotifier {
@@ -17,9 +18,8 @@ class ModbusRtuService extends ChangeNotifier {
   String _portName = '';
   int _baudRate = 9600;
 
-  bool _isWriting = false;
-
-  bool get isWriting => _isWriting;
+  // ✅ Реентерабельная блокировка для последовательного выполнения операций
+  final Lock _lock = Lock(reentrant: true);
 
   final FlutterSerialCommunication _serialComm = FlutterSerialCommunication();
   StreamSubscription? _messageListener;
@@ -86,7 +86,6 @@ class ModbusRtuService extends ChangeNotifier {
       _slaveId = slaveId;
       _timeout = timeout * 1000;
       _baudRate = baudRate;
-      // ✅ Сохраняем именно port, а не deviceName
       _portName = port;
 
       final List<DeviceInfo> devices = await _serialComm.getAvailableDevices();
@@ -99,7 +98,6 @@ class ModbusRtuService extends ChangeNotifier {
 
       DeviceInfo? targetDevice;
       for (final DeviceInfo device in devices) {
-        // ✅ Ищем по deviceName (путь к устройству)
         if (device.deviceName.contains(port) ||
             port.contains(device.deviceName)) {
           targetDevice = device;
@@ -109,7 +107,6 @@ class ModbusRtuService extends ChangeNotifier {
 
       targetDevice ??= devices.first;
 
-      // ✅ Сохраняем реальный путь для логирования
       final String devicePath = targetDevice.deviceName;
       LoggerService().log('🔌 Подключение к $devicePath');
 
@@ -123,8 +120,6 @@ class ModbusRtuService extends ChangeNotifier {
 
       _connected = true;
       _lastError = '';
-
-      // ✅ Обновляем _portName на реальный путь
       _portName = devicePath;
 
       _startListening();
@@ -331,20 +326,19 @@ class ModbusRtuService extends ChangeNotifier {
         return null;
       }
 
-      // ✅ Определяем тип запроса (6 - запись одного регистра)
+      // Определяем тип запроса (6 - запись одного регистра, 16 - групповая запись)
       final bool isWrite = request[1] == 6 || request[1] == 16;
 
-      // ✅ Для записи возвращаем успех без ожидания ответа
+      // Для записи возвращаем успех без ожидания ответа
       if (isWrite) {
         LoggerService().log(
           '✅ Запись отправлена (ожидание ответа не требуется)',
         );
-        // Небольшая задержка для обработки на устройстве
         await Future.delayed(const Duration(milliseconds: 300));
         return Uint8List.fromList([_slaveId, request[1], 0, 0, 0, 0, 0, 0]);
       }
 
-      // ✅ Для чтения ждем ответ
+      // Для чтения ждем ответ
       final Stopwatch stopwatch = Stopwatch()..start();
 
       while (stopwatch.elapsedMilliseconds < _timeout) {
@@ -381,6 +375,7 @@ class ModbusRtuService extends ChangeNotifier {
       return null;
     }
   }
+
   // ==================== Публичные методы ====================
 
   Future<int?> readRegister(
@@ -388,91 +383,96 @@ class ModbusRtuService extends ChangeNotifier {
     int count = 1,
     String type = 'int',
   }) async {
-    if (!_connected) {
-      _lastError = 'Нет подключения';
-      return null;
-    }
-
-    try {
-      LoggerService().log('📖 RTU чтение: адрес=$address, тип=$type');
-
-      final int regCount = type == 'float' ? 2 : count;
-      final Uint8List request = _buildModbusRequest(3, address, regCount);
-      final Uint8List? response = await _sendModbusRequest(request);
-
-      if (response == null) {
+    return await _lock.synchronized(() async {
+      if (!_connected) {
+        _lastError = 'Нет подключения';
         return null;
       }
 
-      if (type == 'float') {
-        if (response.length < 7) {
+      try {
+        LoggerService().log('📖 RTU чтение: адрес=$address, тип=$type');
+
+        final int regCount = type == 'float' ? 2 : count;
+        final Uint8List request = _buildModbusRequest(3, address, regCount);
+        final Uint8List? response = await _sendModbusRequest(request);
+
+        if (response == null) {
           return null;
         }
-        // ✅ Правильный порядок байтов для ПР200 (CDAB - swapByte)
+
+        if (type == 'float') {
+          if (response.length < 7) {
+            return null;
+          }
+          final Uint8List bytes = Uint8List(4);
+          bytes[0] = response[4];
+          bytes[1] = response[3];
+          bytes[2] = response[6];
+          bytes[3] = response[5];
+
+          final double floatValue = ByteData.sublistView(
+            bytes,
+          ).getFloat32(0, Endian.little);
+          final double rounded = double.parse(floatValue.toStringAsFixed(1));
+          _floatCache[address] = rounded;
+          return rounded.toInt();
+        } else {
+          final int value = (response[3] << 8) | response[4];
+          _registerCache[address] = value;
+          LoggerService().log('📊 RTU регистр $address = $value');
+          return value;
+        }
+      } catch (e) {
+        _lastError = e.toString();
+        LoggerService().log(
+          '❌ RTU readRegister ошибка: $e',
+          level: LogLevel.error,
+        );
+        return null;
+      }
+    });
+  }
+
+  Future<double?> readFloat(int address) async {
+    return await _lock.synchronized(() async {
+      if (!_connected) {
+        _lastError = 'Нет подключения';
+        return null;
+      }
+
+      try {
+        LoggerService().log('📖 RTU readFloat: адрес=$address');
+
+        final Uint8List request = _buildModbusRequest(3, address, 2);
+        final Uint8List? response = await _sendModbusRequest(request);
+
+        if (response == null || response.length < 7) {
+          return null;
+        }
+
         final Uint8List bytes = Uint8List(4);
         bytes[0] = response[4];
         bytes[1] = response[3];
         bytes[2] = response[6];
         bytes[3] = response[5];
 
-        final double floatValue = ByteData.sublistView(
+        final double value = ByteData.sublistView(
           bytes,
         ).getFloat32(0, Endian.little);
-        final double rounded = double.parse(floatValue.toStringAsFixed(1));
+        final double rounded = double.parse(value.toStringAsFixed(1));
         _floatCache[address] = rounded;
-        return rounded.toInt();
-      } else {
-        final int value = (response[3] << 8) | response[4];
-        _registerCache[address] = value;
-        LoggerService().log('📊 RTU регистр $address = $value');
-        return value;
-      }
-    } catch (e) {
-      _lastError = e.toString();
-      LoggerService().log(
-        '❌ RTU readRegister ошибка: $e',
-        level: LogLevel.error,
-      );
-      return null;
-    }
-  }
 
-  Future<double?> readFloat(int address) async {
-    if (!_connected) {
-      _lastError = 'Нет подключения';
-      return null;
-    }
-
-    try {
-      LoggerService().log('📖 RTU readFloat: адрес=$address');
-
-      final Uint8List request = _buildModbusRequest(3, address, 2);
-      final Uint8List? response = await _sendModbusRequest(request);
-
-      if (response == null || response.length < 7) {
+        LoggerService().log('📊 RTU float $address = $rounded');
+        return rounded;
+      } catch (e) {
+        _lastError = e.toString();
+        LoggerService().log(
+          '❌ RTU readFloat ошибка: $e',
+          level: LogLevel.error,
+        );
         return null;
       }
-
-      // ✅ Правильный порядок байтов для ПР200 (CDAB - swapByte)
-      final Uint8List bytes = Uint8List(4);
-      bytes[0] = response[4]; // младший байт младшего слова
-      bytes[1] = response[3]; // старший байт младшего слова
-      bytes[2] = response[6]; // младший байт старшего слова
-      bytes[3] = response[5]; // старший байт старшего слова
-
-      final double value = ByteData.sublistView(
-        bytes,
-      ).getFloat32(0, Endian.little);
-      final double rounded = double.parse(value.toStringAsFixed(1));
-      _floatCache[address] = rounded;
-
-      LoggerService().log('📊 RTU float $address = $rounded');
-      return rounded;
-    } catch (e) {
-      _lastError = e.toString();
-      LoggerService().log('❌ RTU readFloat ошибка: $e', level: LogLevel.error);
-      return null;
-    }
+    });
   }
 
   Future<bool> writeRegister(
@@ -480,51 +480,54 @@ class ModbusRtuService extends ChangeNotifier {
     dynamic value, {
     String type = 'int',
   }) async {
-    if (!_connected) {
-      _lastError = 'Нет подключения';
-      return false;
-    }
-
-    try {
-      LoggerService().log(
-        '📝 RTU запись: адрес=$address, значение=$value, тип=$type',
-      );
-
-      if (type == 'float') {
-        final floatValue = double.parse(value.toString());
-        final ByteData byteData = ByteData(4);
-        byteData.setFloat32(0, floatValue, Endian.little);
-        final Uint8List bytes = byteData.buffer.asUint8List();
-
-        final int loReg = (bytes[1] << 8) | bytes[0];
-        final int hiReg = (bytes[3] << 8) | bytes[2];
-
-        // ✅ Используем _writeSingleRegister для float
-        final bool success1 = await _writeSingleRegister(address, loReg);
-        if (!success1) return false;
-
-        final bool success2 = await _writeSingleRegister(address + 1, hiReg);
-        if (!success2) return false;
-
-        _floatCache[address] = floatValue;
-        return true;
-      } else {
-        // ✅ Для int используем _writeSingleRegister
-        return await _writeSingleRegister(address, int.parse(value.toString()));
+    return await _lock.synchronized(() async {
+      if (!_connected) {
+        _lastError = 'Нет подключения';
+        return false;
       }
-    } catch (e) {
-      _lastError = e.toString();
-      LoggerService().log(
-        '❌ RTU writeRegister ошибка: $e',
-        level: LogLevel.error,
-      );
-      return false;
-    }
+
+      try {
+        LoggerService().log(
+          '📝 RTU запись: адрес=$address, значение=$value, тип=$type',
+        );
+
+        if (type == 'float') {
+          final floatValue = double.parse(value.toString());
+          final ByteData byteData = ByteData(4);
+          byteData.setFloat32(0, floatValue, Endian.little);
+          final Uint8List bytes = byteData.buffer.asUint8List();
+
+          final int loReg = (bytes[1] << 8) | bytes[0];
+          final int hiReg = (bytes[3] << 8) | bytes[2];
+
+          final bool success1 = await _writeSingleRegister(address, loReg);
+          if (!success1) return false;
+
+          final bool success2 = await _writeSingleRegister(address + 1, hiReg);
+          if (!success2) return false;
+
+          _floatCache[address] = floatValue;
+          return true;
+        } else {
+          return await _writeSingleRegister(
+            address,
+            int.parse(value.toString()),
+          );
+        }
+      } catch (e) {
+        _lastError = e.toString();
+        LoggerService().log(
+          '❌ RTU writeRegister ошибка: $e',
+          level: LogLevel.error,
+        );
+        return false;
+      }
+    });
   }
 
+  // Вспомогательный метод для записи одного регистра (НЕ обёрнут в блокировку,
+  // так как вызывается только из writeRegister, который уже захватил блокировку)
   Future<bool> _writeSingleRegister(int address, int value) async {
-    _isWriting = true; // ✅ Установить флаг
-
     try {
       print('🔵 _writeSingleRegister: адрес=$address, значение=$value');
 
@@ -542,7 +545,7 @@ class ModbusRtuService extends ChangeNotifier {
         return false;
       }
 
-      // ✅ Ждем ответ от устройства
+      // Ждем ответ от устройства
       final Stopwatch stopwatch = Stopwatch()..start();
       bool hasResponse = false;
       Uint8List? response;
@@ -571,11 +574,11 @@ class ModbusRtuService extends ChangeNotifier {
         }
       }
 
-      // ✅ Даже без ответа считаем успешным
+      // Даже без ответа считаем успешным
       _registerCache[address] = value;
       LoggerService().log('✅ RTU запись выполнена (адрес $address = $value)');
 
-      // ✅ ВАЖНО: Дополнительная задержка после записи
+      // Дополнительная задержка после записи
       await Future.delayed(const Duration(milliseconds: 800));
 
       return true;
@@ -586,208 +589,225 @@ class ModbusRtuService extends ChangeNotifier {
         level: LogLevel.error,
       );
       return false;
-    } finally {
-      _isWriting = false; // ✅ Снять флаг
     }
   }
 
   Future<bool> writeBit(int address, int bit, int value) async {
-    LoggerService().log(
-      '🔵 RTU writeBit: адрес=$address, бит=$bit, значение=$value',
-    );
+    return await _lock.synchronized(() async {
+      LoggerService().log(
+        '🔵 RTU writeBit: адрес=$address, бит=$bit, значение=$value',
+      );
 
-    if (!_connected) {
-      _lastError = 'Нет подключения';
-      return false;
-    }
-
-    try {
-      final int? currentValue = await readRegister(address);
-      if (currentValue == null) {
+      if (!_connected) {
+        _lastError = 'Нет подключения';
         return false;
       }
 
-      final int newValue = value == 1
-          ? currentValue | (1 << bit)
-          : currentValue & ~(1 << bit);
+      try {
+        final int? currentValue = await readRegister(address);
+        if (currentValue == null) {
+          return false;
+        }
 
-      return await writeRegister(address, newValue);
-    } catch (e) {
-      _lastError = e.toString();
-      LoggerService().log('❌ RTU writeBit ошибка: $e', level: LogLevel.error);
-      return false;
-    }
+        final int newValue = value == 1
+            ? currentValue | (1 << bit)
+            : currentValue & ~(1 << bit);
+
+        return await writeRegister(address, newValue);
+      } catch (e) {
+        _lastError = e.toString();
+        LoggerService().log('❌ RTU writeBit ошибка: $e', level: LogLevel.error);
+        return false;
+      }
+    });
   }
 
   Future<Map<int, int>> readMultipleRegisters(List<int> addresses) async {
-    LoggerService().log('📖 RTU чтение ${addresses.length} регистров');
+    return await _lock.synchronized(() async {
+      LoggerService().log('📖 RTU чтение ${addresses.length} регистров');
 
-    if (!_connected || addresses.isEmpty) {
-      return {};
-    }
+      if (!_connected || addresses.isEmpty) {
+        return {};
+      }
 
-    final Map<int, int> result = {};
-    final List<int> sortedAddresses = List<int>.from(addresses)..sort();
+      final Map<int, int> result = {};
+      final List<int> sortedAddresses = List<int>.from(addresses)..sort();
 
-    // Группируем адреса
-    final List<List<int>> groups = [];
-    List<int> currentGroup = [];
+      // Группируем адреса
+      final List<List<int>> groups = [];
+      List<int> currentGroup = [];
 
-    for (final int addr in sortedAddresses) {
-      if (currentGroup.isEmpty) {
-        currentGroup.add(addr);
-      } else if (addr - currentGroup.last <= 1) {
-        currentGroup.add(addr);
-      } else {
+      for (final int addr in sortedAddresses) {
+        if (currentGroup.isEmpty) {
+          currentGroup.add(addr);
+        } else if (addr - currentGroup.last <= 1) {
+          currentGroup.add(addr);
+        } else {
+          groups.add(currentGroup);
+          currentGroup = [addr];
+        }
+      }
+      if (currentGroup.isNotEmpty) {
         groups.add(currentGroup);
-        currentGroup = [addr];
       }
-    }
-    if (currentGroup.isNotEmpty) {
-      groups.add(currentGroup);
-    }
 
-    for (final List<int> group in groups) {
-      if (group.length == 1) {
-        final int? value = await readRegister(group.first);
-        if (value != null) {
-          result[group.first] = value;
-        }
-      } else {
-        // Групповое чтение
-        final int start = group.first;
-        final int count = group.last - start + 1;
-        try {
-          final Uint8List request = _buildModbusRequest(3, start, count);
-          final Uint8List? response = await _sendModbusRequest(request);
-
-          if (response != null && response.length >= 5) {
-            final int dataLength = response[2];
-            for (int i = 0; i < dataLength ~/ 2; i++) {
-              final int addr = start + i;
-              final int value =
-                  (response[3 + i * 2] << 8) | response[4 + i * 2];
-              result[addr] = value;
-              _registerCache[addr] = value;
-            }
+      for (final List<int> group in groups) {
+        if (group.length == 1) {
+          final int? value = await readRegister(group.first);
+          if (value != null) {
+            result[group.first] = value;
           }
-        } catch (e) {
-          // Если групповое чтение не удалось - читаем по одному
-          for (final int addr in group) {
-            final int? value = await readRegister(addr);
-            if (value != null) {
-              result[addr] = value;
+        } else {
+          // Групповое чтение
+          final int start = group.first;
+          final int count = group.last - start + 1;
+          try {
+            final Uint8List request = _buildModbusRequest(3, start, count);
+            final Uint8List? response = await _sendModbusRequest(request);
+
+            if (response != null && response.length >= 5) {
+              final int dataLength = response[2];
+              for (int i = 0; i < dataLength ~/ 2; i++) {
+                final int addr = start + i;
+                final int value =
+                    (response[3 + i * 2] << 8) | response[4 + i * 2];
+                result[addr] = value;
+                _registerCache[addr] = value;
+              }
+            }
+          } catch (e) {
+            // Если групповое чтение не удалось - читаем по одному
+            for (final int addr in group) {
+              final int? value = await readRegister(addr);
+              if (value != null) {
+                result[addr] = value;
+              }
             }
           }
         }
       }
-    }
 
-    LoggerService().log('✅ RTU прочитано ${result.length} регистров');
-    return result;
+      LoggerService().log('✅ RTU прочитано ${result.length} регистров');
+      return result;
+    });
   }
 
   Future<Map<int, double>> readMultipleFloats(List<int> addresses) async {
-    LoggerService().log('📖 RTU чтение ${addresses.length} float');
+    return await _lock.synchronized(() async {
+      LoggerService().log('📖 RTU чтение ${addresses.length} float');
 
-    if (!_connected || addresses.isEmpty) {
-      return {};
-    }
-
-    final Map<int, double> result = {};
-
-    for (final int addr in addresses) {
-      final double? value = await readFloat(addr);
-      if (value != null) {
-        result[addr] = value;
+      if (!_connected || addresses.isEmpty) {
+        return {};
       }
-    }
 
-    return result;
+      final Map<int, double> result = {};
+
+      for (final int addr in addresses) {
+        final double? value = await readFloat(addr);
+        if (value != null) {
+          result[addr] = value;
+        }
+      }
+
+      return result;
+    });
   }
 
   Future<bool> writeMultipleRegisters(
     Map<int, dynamic> values, {
     String type = 'int',
   }) async {
-    LoggerService().log('📝 RTU групповая запись: ${values.length} параметров');
-
-    if (!_connected || values.isEmpty) {
-      return false;
-    }
-
-    bool allSuccess = true;
-
-    for (final MapEntry<int, dynamic> entry in values.entries) {
-      final bool success = await writeRegister(
-        entry.key,
-        entry.value,
-        type: type,
+    return await _lock.synchronized(() async {
+      LoggerService().log(
+        '📝 RTU групповая запись: ${values.length} параметров',
       );
-      if (!success) {
-        allSuccess = false;
-        LoggerService().log(
-          '❌ Ошибка записи адреса ${entry.key}',
-          level: LogLevel.error,
-        );
-      }
-    }
 
-    return allSuccess;
+      if (!_connected || values.isEmpty) {
+        return false;
+      }
+
+      bool allSuccess = true;
+
+      for (final MapEntry<int, dynamic> entry in values.entries) {
+        final bool success = await writeRegister(
+          entry.key,
+          entry.value,
+          type: type,
+        );
+        if (!success) {
+          allSuccess = false;
+          LoggerService().log(
+            '❌ Ошибка записи адреса ${entry.key}',
+            level: LogLevel.error,
+          );
+        }
+      }
+
+      return allSuccess;
+    });
   }
 
   Future<List<AlarmItem>> readAlarms(
     int address,
     List<AlarmConfig> alarms,
   ) async {
-    LoggerService().log(
-      '🔴 Проверка аварий (адрес: $address, кол-во: ${alarms.length})',
-    );
+    return await _lock.synchronized(() async {
+      LoggerService().log(
+        '🔴 Проверка аварий (адрес: $address, кол-во: ${alarms.length})',
+      );
 
-    final List<AlarmItem> activeAlarms = [];
+      final List<AlarmItem> activeAlarms = [];
 
-    try {
-      final int? value = await readRegister(address);
-      if (value == null) {
+      try {
+        final int? value = await readRegister(address);
+        if (value == null) {
+          return [];
+        }
+
+        for (final AlarmConfig alarm in alarms) {
+          final bool isActive = (value & (1 << alarm.bit)) != 0;
+          if (isActive) {
+            LoggerService().log(
+              '🔴 Авария: ${alarm.name} (бит ${alarm.bit}) активна',
+              level: LogLevel.warning,
+            );
+            activeAlarms.add(
+              AlarmItem(
+                name: alarm.name,
+                description: alarm.description,
+                address: alarm.address,
+                bit: alarm.bit,
+              ),
+            );
+          }
+        }
+
+        return activeAlarms;
+      } catch (e) {
+        _lastError = e.toString();
+        LoggerService().log(
+          '❌ RTU readAlarms ошибка: $e',
+          level: LogLevel.error,
+        );
         return [];
       }
-
-      for (final AlarmConfig alarm in alarms) {
-        final bool isActive = (value & (1 << alarm.bit)) != 0;
-        if (isActive) {
-          LoggerService().log(
-            '🔴 Авария: ${alarm.name} (бит ${alarm.bit}) активна',
-            level: LogLevel.warning,
-          );
-          activeAlarms.add(
-            AlarmItem(
-              name: alarm.name,
-              description: alarm.description,
-              address: alarm.address,
-              bit: alarm.bit,
-            ),
-          );
-        }
-      }
-
-      return activeAlarms;
-    } catch (e) {
-      _lastError = e.toString();
-      LoggerService().log('❌ RTU readAlarms ошибка: $e', level: LogLevel.error);
-      return [];
-    }
+    });
   }
 
   Future<bool> resetAlarms(int resetAddress, {int value = 1}) async {
-    LoggerService().log('🔄 RTU сброс аварий: адрес=$resetAddress');
-    return await writeBit(resetAddress, 14, value);
+    return await _lock.synchronized(() async {
+      LoggerService().log('🔄 RTU сброс аварий: адрес=$resetAddress');
+      return await writeBit(resetAddress, 14, value);
+    });
   }
 
   Future<dynamic> readParameterValue(ItemConfig param) async {
-    if (param.type == 'float') {
-      return await readFloat(param.address);
-    } else {
-      return await readRegister(param.address, type: param.type);
-    }
+    return await _lock.synchronized(() async {
+      if (param.type == 'float') {
+        return await readFloat(param.address);
+      } else {
+        return await readRegister(param.address, type: param.type);
+      }
+    });
   }
 }

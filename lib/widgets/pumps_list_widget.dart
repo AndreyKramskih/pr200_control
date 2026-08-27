@@ -10,6 +10,7 @@ class PumpsListWidget extends StatefulWidget {
   final Map<String, dynamic> modeData;
   final VoidCallback onDropdownOpen;
   final VoidCallback onDropdownClose;
+  final Function(int, int) onModeWrite;
   final Function(int, int) onModeChanged;
 
   const PumpsListWidget({
@@ -20,6 +21,7 @@ class PumpsListWidget extends StatefulWidget {
     required this.onDropdownOpen,
     required this.onDropdownClose,
     required this.onModeChanged,
+    required this.onModeWrite,
   });
 
   @override
@@ -85,6 +87,7 @@ class _PumpsListWidgetState extends State<PumpsListWidget> {
               );
               widget.onModeChanged(address, newValue);
             },
+            onModeWrite: widget.onModeWrite,
           );
         }).toList(),
       ),
