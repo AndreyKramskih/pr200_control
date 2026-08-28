@@ -93,13 +93,12 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
   // ==================== УНИВЕРСАЛЬНЫЙ МЕТОД ДЛЯ ЗАПИСИ ====================
   Future<void> _performWrite(Future<void> Function() writeOperation) async {
-    // Останавливаем автообновление на время записи
     _updateTimer?.cancel();
     try {
       await writeOperation();
     } finally {
-      // Возобновляем автообновление только если это realtime-тип и виджет активен
-      if (_isRealtimeType && mounted) {
+      // Возобновляем автообновление только если виджет активен и это realtime-тип
+      if (mounted && _isRealtimeType) {
         _startAutoUpdate();
       }
     }
@@ -257,7 +256,10 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
         final alarmsForAddress = entry.value;
 
         try {
-          final regValue = await modbusManager.readRegister(address);
+          final regValue = await modbusManager.readRegister(
+            address,
+            useCache: false,
+          );
 
           if (regValue != null) {
             for (final alarm in alarmsForAddress) {
@@ -385,7 +387,10 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
         final alarmsForAddress = entry.value;
 
         try {
-          final regValue = await modbusManager.readRegister(address);
+          final regValue = await modbusManager.readRegister(
+            address,
+            useCache: false,
+          );
 
           if (regValue != null) {
             for (final alarm in alarmsForAddress) {
@@ -895,7 +900,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       final resetAddress = submenu.resetAddress!;
       final resetBit = submenu.resetBit ?? 3;
 
-      // Останавливаем таймер на время сброса (уже остановлен в _performWrite)
       setState(() {
         _isResettingAlarms = true;
         _isLoading = true;
@@ -914,11 +918,18 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
         );
 
         // 1. Читаем текущее значение
-        final currentValue = await modbusManager.readRegister(resetAddress);
+        final currentValue = await modbusManager.readRegister(
+          resetAddress,
+          useCache: false,
+        );
         if (currentValue == null) {
           _showError('Не удалось прочитать статус');
           return;
         }
+
+        LoggerService().log(
+          '📊 Текущее значение регистра $resetAddress = $currentValue',
+        );
 
         // 2. Устанавливаем бит сброса
         final valueWithReset = currentValue | (1 << resetBit);
@@ -938,15 +949,15 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
         // 3. Ждем, пока ПЛК обработает
         await Future.delayed(const Duration(milliseconds: 300));
 
-        // 4. Снимаем бит сброса
-        final valueAfterReset = valueWithReset & ~(1 << resetBit);
+        // 4. Снимаем бит сброса (НЕ восстанавливаем другие биты!)
+        final valueClearReset = valueWithReset & ~(1 << resetBit);
         LoggerService().log(
-          '🔧 Снимаем бит $resetBit: $valueWithReset → $valueAfterReset',
+          '🔧 Снимаем бит $resetBit: $valueWithReset → $valueClearReset',
         );
 
         final success2 = await modbusManager.writeRegister(
           resetAddress,
-          valueAfterReset,
+          valueClearReset,
         );
         if (!success2) {
           _showError('Ошибка снятия бита сброса');
@@ -956,10 +967,22 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
         // 5. Ждем, пока ПЛК применит изменения
         await Future.delayed(const Duration(milliseconds: 500));
 
-        // 6. Обновляем список аварий
+        // 6. Перечитываем регистр с устройства
+        final freshValue = await modbusManager.readRegister(
+          resetAddress,
+          useCache: false,
+        );
+        LoggerService().log(
+          '📊 Свежее значение регистра $resetAddress = $freshValue',
+        );
+
+        // 7. Инвалидируем кеш
+        modbusManager.invalidateCache(resetAddress);
+
+        // 8. Обновляем список аварий
         await _loadRealtimeData(submenu);
 
-        // 7. Проверяем результат
+        // 9. Проверяем результат
         if (_alarms.isEmpty) {
           _showSuccess('✅ Все аварии сброшены!');
         } else {
@@ -982,7 +1005,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       }
     });
   }
-
   // ==================== СТАРТ/СТОП ====================
 
   Future<void> _toggleStartStop() async {
