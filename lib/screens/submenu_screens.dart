@@ -845,144 +845,211 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   // ==================== АВАРИИ ====================
 
   Future<void> _resetAlarms() async {
-    await _performWrite(() async {
-      if (!mounted) return;
+    if (!mounted) return;
 
-      final config = Provider.of<ConfigModel>(context, listen: false);
-      final system = config.getSystem(widget.systemId);
-      if (system == null) return;
-      final submenu = system.submenus[widget.submenuId];
-      if (submenu == null) return;
+    final config = Provider.of<ConfigModel>(context, listen: false);
+    final system = config.getSystem(widget.systemId);
+    if (system == null) return;
+    final submenu = system.submenus[widget.submenuId];
+    if (submenu == null) return;
+    if (submenu.resetAddress == null) return;
 
-      if (submenu.resetAddress == null) return;
+    final resetAddress = submenu.resetAddress!;
+    final resetBit = submenu.resetBit ?? 3;
 
-      final modbusManager = ModbusManager(context);
+    // ✅ Ищем биты из конфига
+    int? startStopBit;
+    int? modeBit;
 
-      if (!modbusManager.connected) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Нет подключения к контроллеру'),
-              backgroundColor: Colors.red,
-            ),
-          );
+    for (final entry in system.submenus.entries) {
+      if (entry.value.type == 'startstop' && entry.value.items != null) {
+        for (final item in entry.value.items!) {
+          if (item.bit != null) {
+            startStopBit = item.bit!;
+            break;
+          }
         }
-        return;
       }
+      if (startStopBit != null) break;
+    }
 
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Сброс аварий'),
-          content: const Text(
-            'Вы уверены, что хотите сбросить все активные аварии?\n\n'
-            '⚠️ Сброс возможен только если причина аварии устранена.',
+    for (final entry in system.submenus.entries) {
+      if (entry.value.type == 'valve' && entry.value.items != null) {
+        for (final item in entry.value.items!) {
+          if (item.name.contains('Режим работы') && item.bit != null) {
+            modeBit = item.bit!;
+            break;
+          }
+        }
+      }
+      if (modeBit != null) break;
+    }
+
+    LoggerService().log(
+      '🔍 Найден Start/Stop бит: ${startStopBit ?? "не найден"}',
+    );
+    LoggerService().log('🔍 Найден Mode бит: ${modeBit ?? "не найден"}');
+
+    final modbusManager = ModbusManager(context);
+
+    if (!modbusManager.connected) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Нет подключения к контроллеру'),
+            backgroundColor: Colors.red,
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Отмена'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text('Сбросить'),
-            ),
-          ],
+        );
+      }
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Сброс аварий'),
+        content: const Text(
+          'Вы уверены, что хотите сбросить все активные аварии?\n\n'
+          '⚠️ Сброс возможен только если причина аварии устранена.',
         ),
-      );
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Отмена'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Сбросить'),
+          ),
+        ],
+      ),
+    );
 
-      if (confirm != true || !mounted) return;
+    if (confirm != true || !mounted) return;
 
-      final resetAddress = submenu.resetAddress!;
-      final resetBit = submenu.resetBit ?? 3;
-
+    // ✅ Проверка mounted перед setState
+    if (mounted) {
       setState(() {
         _isResettingAlarms = true;
         _isLoading = true;
       });
+    }
 
-      try {
-        LoggerService().log(
-          '🔄 Сброс аварий: адрес=$resetAddress, бит=$resetBit',
-        );
+    try {
+      LoggerService().log(
+        '🔄 Сброс аварий: адрес=$resetAddress, бит=$resetBit',
+      );
 
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('⏳ Сброс аварий...'),
             duration: Duration(seconds: 1),
           ),
         );
+      }
 
-        // 1. Читаем текущее значение
-        final currentValue = await modbusManager.readRegister(
-          resetAddress,
-          useCache: false,
-        );
-        if (currentValue == null) {
-          _showError('Не удалось прочитать статус');
-          return;
-        }
+      // 1. Читаем ТЕКУЩЕЕ значение
+      final currentValue = await modbusManager.readRegister(
+        resetAddress,
+        useCache: false,
+      );
 
+      if (currentValue == null) {
+        _showError('Не удалось прочитать регистр');
+        return;
+      }
+
+      // 2. Сохраняем состояния
+      bool? wasStartStopOn;
+      bool? wasModeManual;
+
+      if (startStopBit != null) {
+        wasStartStopOn = (currentValue & (1 << startStopBit)) != 0;
         LoggerService().log(
-          '📊 Текущее значение регистра $resetAddress = $currentValue',
+          '🔵 Start/Stop (бит $startStopBit): ${wasStartStopOn ? "ВКЛ" : "ВЫКЛ"}',
         );
+      }
 
-        // 2. Устанавливаем бит сброса
-        final valueWithReset = currentValue | (1 << resetBit);
+      if (modeBit != null) {
+        wasModeManual = (currentValue & (1 << modeBit)) != 0;
         LoggerService().log(
-          '🔧 Устанавливаем бит $resetBit: $currentValue → $valueWithReset',
+          '🔵 Режим (бит $modeBit): ${wasModeManual ? "РУЧНОЙ" : "АВТО"}',
         );
+      }
 
-        final success1 = await modbusManager.writeRegister(
-          resetAddress,
-          valueWithReset,
-        );
-        if (!success1) {
-          _showError('Ошибка установки бита сброса');
-          return;
-        }
+      // 3. Устанавливаем бит сброса
+      final int valueWithReset = currentValue | (1 << resetBit);
+      final success1 = await modbusManager.writeRegister(
+        resetAddress,
+        valueWithReset,
+      );
 
-        // 3. Ждем, пока ПЛК обработает
-        await Future.delayed(const Duration(milliseconds: 300));
+      if (!success1) {
+        _showError('Ошибка установки бита сброса');
+        return;
+      }
 
-        // 4. Снимаем бит сброса (НЕ восстанавливаем другие биты!)
-        final valueClearReset = valueWithReset & ~(1 << resetBit);
+      await Future.delayed(const Duration(milliseconds: 800));
+
+      // 4. Читаем после сброса
+      final afterResetValue = await modbusManager.readRegister(
+        resetAddress,
+        useCache: false,
+      );
+
+      if (afterResetValue == null) {
+        _showError('Не удалось прочитать регистр после сброса');
+        return;
+      }
+
+      // 5. Восстанавливаем управляющие биты
+      int restoredValue = afterResetValue;
+
+      if (startStopBit != null && wasStartStopOn != null) {
+        restoredValue = wasStartStopOn
+            ? restoredValue | (1 << startStopBit)
+            : restoredValue & ~(1 << startStopBit);
         LoggerService().log(
-          '🔧 Снимаем бит $resetBit: $valueWithReset → $valueClearReset',
+          '🔧 Восстанавливаем Start/Stop (бит $startStopBit): ${wasStartStopOn ? "ВКЛ" : "ВЫКЛ"}',
         );
+      }
 
-        final success2 = await modbusManager.writeRegister(
-          resetAddress,
-          valueClearReset,
-        );
-        if (!success2) {
-          _showError('Ошибка снятия бита сброса');
-          return;
-        }
-
-        // 5. Ждем, пока ПЛК применит изменения
-        await Future.delayed(const Duration(milliseconds: 500));
-
-        // 6. Перечитываем регистр с устройства
-        final freshValue = await modbusManager.readRegister(
-          resetAddress,
-          useCache: false,
-        );
+      if (modeBit != null && wasModeManual != null) {
+        restoredValue = wasModeManual
+            ? restoredValue | (1 << modeBit)
+            : restoredValue & ~(1 << modeBit);
         LoggerService().log(
-          '📊 Свежее значение регистра $resetAddress = $freshValue',
+          '🔧 Восстанавливаем режим (бит $modeBit): ${wasModeManual ? "РУЧНОЙ" : "АВТО"}',
         );
+      }
 
-        // 7. Инвалидируем кеш
-        modbusManager.invalidateCache(resetAddress);
+      // 6. Снимаем бит сброса
+      restoredValue = restoredValue & ~(1 << resetBit);
 
-        // 8. Обновляем список аварий
-        await _loadRealtimeData(submenu);
+      LoggerService().log('🔧 Восстановленное значение: $restoredValue');
 
-        // 9. Проверяем результат
+      final success2 = await modbusManager.writeRegister(
+        resetAddress,
+        restoredValue,
+      );
+
+      if (!success2) {
+        _showError('Ошибка восстановления управляющих битов');
+        return;
+      }
+
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // 7. Обновляем данные
+      await _loadRealtimeData(submenu);
+
+      // ✅ Проверка mounted перед выводом результата
+      if (mounted) {
         if (_alarms.isEmpty) {
           _showSuccess('✅ Все аварии сброшены!');
         } else {
@@ -991,19 +1058,19 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
             'Устраните причину и повторите сброс.',
           );
         }
-      } catch (e) {
-        LoggerService().log(
-          '❌ Ошибка сброса аварий: $e',
-          level: LogLevel.error,
-        );
-        _showError('Ошибка сброса аварий: $e');
-      } finally {
+      }
+    } catch (e) {
+      LoggerService().log('❌ Ошибка сброса аварий: $e', level: LogLevel.error);
+      if (mounted) _showError('Ошибка сброса аварий: $e');
+    } finally {
+      // ✅ КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ: проверка mounted перед setState
+      if (mounted) {
         setState(() {
           _isResettingAlarms = false;
           _isLoading = false;
         });
       }
-    });
+    }
   }
   // ==================== СТАРТ/СТОП ====================
 
