@@ -845,48 +845,6 @@ class ModbusService extends ChangeNotifier {
     return await writeRegister(address, value, type: 'float');
   }
 
-  /// Запись ОДНОГО бита в регистр (без изменения других битов)
-  Future<bool> writeBit(int address, int bit, int value) async {
-    print('🔵 writeBit: адрес=$address, бит=$bit, значение=$value');
-
-    if (!_connected) {
-      _lastError = 'Нет подключения к ПЛК';
-      return false;
-    }
-
-    try {
-      final currentValue = await readRegister(address);
-      if (currentValue == null) {
-        print('❌ writeBit: не удалось прочитать регистр $address');
-        return false;
-      }
-
-      print(
-        '📊 Текущее значение регистра $address = $currentValue (0b${currentValue.toRadixString(2).padLeft(16, '0')})',
-      );
-
-      int newValue;
-      if (value == 1) {
-        newValue = currentValue | (1 << bit);
-      } else {
-        newValue = currentValue & ~(1 << bit);
-      }
-
-      print(
-        '📊 Новое значение = $newValue (0b${newValue.toRadixString(2).padLeft(16, '0')})',
-      );
-
-      final result = await writeRegister(address, newValue);
-      print('✅ writeBit: результат = $result');
-
-      return result;
-    } catch (e) {
-      _lastError = e.toString();
-      print('❌ writeBit ошибка: $e');
-      return false;
-    }
-  }
-
   // ==================== АВАРИИ ====================
 
   Future<List<AlarmItem>> readAlarms(

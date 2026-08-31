@@ -181,16 +181,51 @@ class ModbusManager {
     return success;
   }
 
-  // Запись бита (инвалидируем кеш)
-  Future<bool> writeBit(int address, int bit, int value) async {
-    final success = await _activeService.writeBit(address, bit, value);
-
-    // Инвалидируем кеш при успешной записи
-    if (success) {
-      _intCache.remove(address);
-      _floatCache.remove(address);
+  /// Установить бит в 1 (включить)
+  Future<bool> setBit(int address, int bit) async {
+    _lastError = '';
+    final current = await readRegister(address, useCache: false);
+    if (current == null) {
+      _lastError = 'Не удалось прочитать регистр $address';
+      return false;
     }
+    final newValue = current | (1 << bit);
+    final success = await writeRegister(address, newValue);
+    if (!success) {
+      _lastError = 'Ошибка записи в регистр $address';
+    }
+    return success;
+  }
 
+  /// Установить бит в 0 (выключить)
+  Future<bool> clearBit(int address, int bit) async {
+    _lastError = '';
+    final current = await readRegister(address, useCache: false);
+    if (current == null) {
+      _lastError = 'Не удалось прочитать регистр $address';
+      return false;
+    }
+    final newValue = current & ~(1 << bit);
+    final success = await writeRegister(address, newValue);
+    if (!success) {
+      _lastError = 'Ошибка записи в регистр $address';
+    }
+    return success;
+  }
+
+  /// Переключить бит (0↔1)
+  Future<bool> toggleBit(int address, int bit) async {
+    _lastError = '';
+    final current = await readRegister(address, useCache: false);
+    if (current == null) {
+      _lastError = 'Не удалось прочитать регистр $address';
+      return false;
+    }
+    final newValue = current ^ (1 << bit); // XOR — переключает бит
+    final success = await writeRegister(address, newValue);
+    if (!success) {
+      _lastError = 'Ошибка записи в регистр $address';
+    }
     return success;
   }
 

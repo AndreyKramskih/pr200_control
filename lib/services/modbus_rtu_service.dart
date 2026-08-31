@@ -592,36 +592,6 @@ class ModbusRtuService extends ChangeNotifier {
     }
   }
 
-  Future<bool> writeBit(int address, int bit, int value) async {
-    return await _lock.synchronized(() async {
-      LoggerService().log(
-        '🔵 RTU writeBit: адрес=$address, бит=$bit, значение=$value',
-      );
-
-      if (!_connected) {
-        _lastError = 'Нет подключения';
-        return false;
-      }
-
-      try {
-        final int? currentValue = await readRegister(address);
-        if (currentValue == null) {
-          return false;
-        }
-
-        final int newValue = value == 1
-            ? currentValue | (1 << bit)
-            : currentValue & ~(1 << bit);
-
-        return await writeRegister(address, newValue);
-      } catch (e) {
-        _lastError = e.toString();
-        LoggerService().log('❌ RTU writeBit ошибка: $e', level: LogLevel.error);
-        return false;
-      }
-    });
-  }
-
   Future<Map<int, int>> readMultipleRegisters(List<int> addresses) async {
     return await _lock.synchronized(() async {
       LoggerService().log('📖 RTU чтение ${addresses.length} регистров');

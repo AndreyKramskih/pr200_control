@@ -760,13 +760,13 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   Future<void> _switchValveMode() async {
     await _performWrite(() async {
       if (!mounted) return;
-
       final config = Provider.of<ConfigModel>(context, listen: false);
       final system = config.getSystem(widget.systemId);
       if (system == null) return;
       final submenu = system.submenus[widget.submenuId];
       if (submenu == null) return;
 
+      // Находим элемент "Режим работы" (как раньше)
       ItemConfig? modeItem;
       if (submenu.items != null) {
         for (final item in submenu.items!) {
@@ -776,43 +776,30 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
           }
         }
       }
-      if (modeItem == null) return;
+      if (modeItem == null) {
+        _showError('Не найден элемент "Режим работы"');
+        return;
+      }
 
       final modbusManager = ModbusManager(context);
 
-      try {
+      // 🎯 Вся логика теперь внутри менеджера!
+      final success = await modbusManager.toggleBit(
+        modeItem.address,
+        modeItem.bit ?? 0,
+      );
+
+      if (success) {
         final currentValue = await modbusManager.readRegister(modeItem.address);
-        if (currentValue == null) {
-          if (mounted) _showError('Не удалось прочитать текущий режим');
-          return;
-        }
-
-        final isManual = (currentValue & (1 << (modeItem.bit ?? 0))) != 0;
-        final newValue = isManual
-            ? currentValue & ~(1 << (modeItem.bit ?? 0))
-            : currentValue | (1 << (modeItem.bit ?? 0));
-
-        final success = await modbusManager.writeRegister(
-          modeItem.address,
-          newValue,
+        final isManual =
+            (currentValue != null) &&
+            (currentValue & (1 << (modeItem.bit ?? 0))) != 0;
+        _showSuccess(
+          isManual ? 'Режим переключен на РУЧНОЙ' : 'Режим переключен на АВТО',
         );
-
-        if (success && mounted) {
-          _showSuccess(
-            isManual
-                ? 'Режим переключен на АВТО'
-                : 'Режим переключен на РУЧНОЙ',
-          );
-          await _loadRealtimeData(submenu);
-        } else if (mounted) {
-          _showError('Не удалось переключить режим');
-        }
-      } catch (e) {
-        LoggerService().log(
-          '❌ Ошибка переключения режима клапана: $e',
-          level: LogLevel.error,
-        );
-        if (mounted) _showError('Ошибка: $e');
+        await _loadRealtimeData(submenu);
+      } else {
+        _showError('Ошибка: ${modbusManager.lastError}');
       }
     });
   }
@@ -998,41 +985,28 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   Future<void> _toggleStartStop() async {
     await _performWrite(() async {
       if (!mounted) return;
-
       final config = Provider.of<ConfigModel>(context, listen: false);
       final system = config.getSystem(widget.systemId);
       if (system == null) return;
       final submenu = system.submenus[widget.submenuId];
-      if (submenu == null) return;
-      if (submenu.items == null || submenu.items!.isEmpty) return;
-
+      if (submenu == null || submenu.items == null || submenu.items!.isEmpty)
+        return;
       final item = submenu.items!.first;
-      final currentValue = _realtimeData[item.address.toString()] ?? 0;
-      final isOn = (currentValue & (1 << (item.bit ?? 0))) != 0;
-
-      final newRegister = isOn
-          ? currentValue & ~(1 << (item.bit ?? 0))
-          : currentValue | (1 << (item.bit ?? 0));
-
       final modbusManager = ModbusManager(context);
 
-      try {
-        final success = await modbusManager.writeRegister(
-          item.address,
-          newRegister,
-        );
+      // 🎯 Вся логика теперь внутри менеджера!
+      final success = await modbusManager.toggleBit(
+        item.address,
+        item.bit ?? 0,
+      );
 
-        if (mounted) {
-          if (success) {
-            _showSuccess(isOn ? 'Выключено' : 'Включено');
-            await _loadRealtimeData(submenu);
-          } else {
-            _showError('Ошибка изменения состояния');
-          }
-        }
-      } catch (e) {
-        LoggerService().log('❌ Ошибка старт/стоп: $e', level: LogLevel.error);
-        if (mounted) _showError('Ошибка: $e');
+      if (success) {
+        final currentValue = _realtimeData[item.address.toString()] ?? 0;
+        final isOn = (currentValue & (1 << (item.bit ?? 0))) != 0;
+        _showSuccess(isOn ? 'Выключено' : 'Включено');
+        await _loadRealtimeData(submenu);
+      } else {
+        _showError('Ошибка: ${modbusManager.lastError}');
       }
     });
   }
