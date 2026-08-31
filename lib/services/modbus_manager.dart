@@ -11,6 +11,9 @@ import 'logger_service.dart';
 class ModbusManager {
   final BuildContext context;
 
+  // ✅ Добавляем поле для хранения ошибок самого менеджера
+  String _lastError = '';
+
   // ✅ Кеш
   final Map<int, CachedValue<int>> _intCache = {};
   final Map<int, CachedValue<double>> _floatCache = {};
@@ -37,7 +40,12 @@ class ModbusManager {
     return modbus.connected || rtuService.connected;
   }
 
+  // ✅ Обновляем геттер lastError
   String get lastError {
+    // Если в менеджере есть своя ошибка — возвращаем её
+    if (_lastError.isNotEmpty) return _lastError;
+
+    // Иначе берём ошибку из активного сервиса
     final modbus = Provider.of<ModbusService>(context, listen: false);
     final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
 
@@ -296,10 +304,72 @@ class ModbusManager {
     return await _activeService.readAlarms(address, alarms);
   }
 
-  // Сброс аварий
-  Future<bool> resetAlarms(int resetAddress, {int value = 1}) async {
-    LoggerService().log('🔄 resetAlarms: адрес=$resetAddress, значение=$value');
-    return await _activeService.resetAlarms(resetAddress, value: value);
+  /// Универсальный сброс аварий с сохранением состояния управляющих битов.
+  ///
+  /// [controlAddress] — адрес регистра, где находятся биты управления (обычно совпадает с resetAddress).
+  /// [resetBit] — номер бита сброса аварий (из конфига).
+  /// [startStopBit] — бит включения/выключения насоса.
+  /// [modeBit] — бит режима работы (авто/ручной).
+  Future<bool> resetAlarms({
+    required int resetAddress,
+    required int resetBit,
+    required int controlAddress, // в большинстве случаев = resetAddress
+    required int startStopBit,
+    required int modeBit,
+  }) async {
+    // Используем существующий метод readRegister (с кешем или без - лучше без кеша)
+    final current = await readRegister(controlAddress, useCache: false);
+    if (current == null) {
+      _lastError = 'Не удалось прочитать регистр $controlAddress';
+      return false;
+    }
+
+    // Сохраняем состояния
+    final wasStartStop = (current & (1 << startStopBit)) != 0;
+    final wasMode = (current & (1 << modeBit)) != 0;
+
+    // Устанавливаем бит сброса
+    final withReset = current | (1 << resetBit);
+    bool success = await writeRegister(controlAddress, withReset);
+    if (!success) {
+      _lastError = 'Ошибка установки бита сброса';
+      return false;
+    }
+
+    // Ждем, пока оборудование обработает сброс
+    await Future.delayed(const Duration(milliseconds: 800));
+
+    // Читаем состояние после сброса
+    final afterReset = await readRegister(controlAddress, useCache: false);
+    if (afterReset == null) {
+      _lastError = 'Не удалось прочитать регистр после сброса';
+      return false;
+    }
+
+    // Восстанавливаем управляющие биты и снимаем бит сброса
+    int restored = afterReset;
+    if (wasStartStop) {
+      restored |= (1 << startStopBit);
+    } else {
+      restored &= ~(1 << startStopBit);
+    }
+    if (wasMode) {
+      restored |= (1 << modeBit);
+    } else {
+      restored &= ~(1 << modeBit);
+    }
+    restored &= ~(1 << resetBit); // Снимаем бит сброса
+
+    // Записываем восстановленное значение
+    success = await writeRegister(controlAddress, restored);
+    if (!success) {
+      _lastError = 'Ошибка восстановления управляющих битов';
+      return false;
+    }
+
+    // Инвалидируем кеш для этого адреса
+    invalidateCache(controlAddress);
+    return true;
   }
 
   // Чтение параметра

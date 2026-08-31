@@ -794,13 +794,6 @@ class ModbusRtuService extends ChangeNotifier {
     });
   }
 
-  Future<bool> resetAlarms(int resetAddress, {int value = 1}) async {
-    return await _lock.synchronized(() async {
-      LoggerService().log('🔄 RTU сброс аварий: адрес=$resetAddress');
-      return await writeBit(resetAddress, 14, value);
-    });
-  }
-
   Future<dynamic> readParameterValue(ItemConfig param) async {
     return await _lock.synchronized(() async {
       if (param.type == 'float') {
