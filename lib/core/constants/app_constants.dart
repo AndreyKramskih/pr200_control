@@ -10,7 +10,6 @@ class AppConstants {
   static const int DEFAULT_BAUD_RATE = 115200;
 
   // БИТЫ
-  static const int ALARM_RESET_BIT = 14;
   static const int MAX_REGISTERS_PER_REQUEST = 12;
 
   // Логи
