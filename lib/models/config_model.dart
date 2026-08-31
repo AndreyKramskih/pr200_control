@@ -161,6 +161,35 @@ class SystemConfig {
     'icon': icon,
     'submenus': submenus.map((key, value) => MapEntry(key, value.toJson())),
   };
+
+  /// Найти первый бит (поле 'bit') в любом ItemConfig внутри подменю указанного типа.
+  /// [type] — строка, например 'startstop', 'valve' и т.д.
+  /// Возвращает null, если ничего не найдено.
+  int? findFirstBitBySubmenuType(String type) {
+    for (final submenu in submenus.values) {
+      if (submenu.type == type && submenu.items != null) {
+        for (final item in submenu.items!) {
+          if (item.bit != null) return item.bit!;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Найти бит 'Режим работы' внутри подменю типа 'valve'.
+  /// Возвращает null, если не найдено.
+  int? findModeBitInValve() {
+    for (final submenu in submenus.values) {
+      if (submenu.type == 'valve' && submenu.items != null) {
+        for (final item in submenu.items!) {
+          if (item.name.contains('Режим работы') && item.bit != null) {
+            return item.bit!;
+          }
+        }
+      }
+    }
+    return null;
+  }
 }
 
 class SubmenuConfig {

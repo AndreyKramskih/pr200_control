@@ -845,32 +845,35 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
     final resetBit = submenu.resetBit ?? 3;
 
     // Поиск битов Start/Stop и Mode
-    int? startStopBit;
-    int? modeBit;
+    // int? startStopBit;
+    // int? modeBit;
 
-    for (final entry in system.submenus.entries) {
-      if (entry.value.type == 'startstop' && entry.value.items != null) {
-        for (final item in entry.value.items!) {
-          if (item.bit != null) {
-            startStopBit = item.bit!;
-            break;
-          }
-        }
-      }
-      if (startStopBit != null) break;
-    }
+    // for (final entry in system.submenus.entries) {
+    //   if (entry.value.type == 'startstop' && entry.value.items != null) {
+    //     for (final item in entry.value.items!) {
+    //       if (item.bit != null) {
+    //         startStopBit = item.bit!;
+    //         break;
+    //       }
+    //     }
+    //   }
+    //   if (startStopBit != null) break;
+    // }
 
-    for (final entry in system.submenus.entries) {
-      if (entry.value.type == 'valve' && entry.value.items != null) {
-        for (final item in entry.value.items!) {
-          if (item.name.contains('Режим работы') && item.bit != null) {
-            modeBit = item.bit!;
-            break;
-          }
-        }
-      }
-      if (modeBit != null) break;
-    }
+    // for (final entry in system.submenus.entries) {
+    //   if (entry.value.type == 'valve' && entry.value.items != null) {
+    //     for (final item in entry.value.items!) {
+    //       if (item.name.contains('Режим работы') && item.bit != null) {
+    //         modeBit = item.bit!;
+    //         break;
+    //       }
+    //     }
+    //   }
+    //   if (modeBit != null) break;
+    // }
+
+    final startStopBit = system.findFirstBitBySubmenuType('startstop');
+    final modeBit = system.findModeBitInValve();
 
     LoggerService().log(
       '🔍 Найден Start/Stop бит: ${startStopBit ?? "не найден"}',
