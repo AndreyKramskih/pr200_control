@@ -73,6 +73,19 @@ class ReportService {
       ),
     );
 
+    pdf.addPage(
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) {
+          return _buildThirdPage(
+            projectName: projectName,
+            systemData: systemData,
+            systemNames: systemNames,
+          );
+        },
+      ),
+    );
+
     final dateStr =
         '${reportTime.year}-${reportTime.month.toString().padLeft(2, '0')}-${reportTime.day.toString().padLeft(2, '0')}_${reportTime.hour.toString().padLeft(2, '0')}-${reportTime.minute.toString().padLeft(2, '0')}';
 
@@ -221,7 +234,7 @@ class ReportService {
           borderRadius: pw.BorderRadius.circular(8),
         ),
         child: pw.Text(
-          'Страница 1/2',
+          'Страница 1/3',
           style: pw.TextStyle(fontSize: 10, color: PdfColors.grey, font: _font),
           textAlign: pw.TextAlign.center,
         ),
@@ -310,7 +323,104 @@ class ReportService {
           borderRadius: pw.BorderRadius.circular(8),
         ),
         child: pw.Text(
-          'Страница 2/2 • Окончание отчета',
+          'Страница 2/3',
+          style: pw.TextStyle(fontSize: 10, color: PdfColors.grey, font: _font),
+          textAlign: pw.TextAlign.center,
+        ),
+      ),
+    );
+
+    return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: children,
+    );
+  }
+
+  /// СТРАНИЦА 3: Третья система
+  pw.Widget _buildThirdPage({
+    required String projectName,
+    required Map<String, Map<String, dynamic>> systemData,
+    required Map<String, String> systemNames,
+  }) {
+    final children = <pw.Widget>[];
+
+    // --- Заголовок ---
+    children.add(
+      pw.Container(
+        padding: const pw.EdgeInsets.all(16),
+        color: PdfColors.blue,
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text(
+              'ПРОДОЛЖЕНИЕ ОТЧЕТА',
+              style: pw.TextStyle(
+                fontSize: 24,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.white,
+                font: _font,
+              ),
+            ),
+            pw.SizedBox(height: 4),
+            pw.Text(
+              projectName,
+              style: pw.TextStyle(
+                fontSize: 14,
+                color: PdfColors.white,
+                font: _font,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    children.add(pw.SizedBox(height: 16));
+
+    // --- Остальные параметры ---
+    int systemCount = 0;
+    for (var entry in systemData.entries) {
+      systemCount++;
+      final systemId = entry.key;
+      final systemName = systemNames[systemId] ?? systemId;
+
+      // Пропускаем первые две системы (они уже на страницах 1 и 2)
+      if (systemCount <= 2) continue;
+
+      // Показываем только третью систему (или больше, если их вдруг окажется > 3)
+      final params = entry.value;
+      children.addAll(_buildSystemBlock(systemName, params, maxItems: 999));
+    }
+
+    // Если по какой-то причине третьей системы нет — показываем сообщение
+    if (systemData.length < 3) {
+      children.add(
+        pw.Padding(
+          padding: const pw.EdgeInsets.all(20),
+          child: pw.Text(
+            'Нет данных для отображения',
+            style: pw.TextStyle(
+              fontSize: 14,
+              color: PdfColors.grey,
+              font: _font,
+            ),
+          ),
+        ),
+      );
+    }
+
+    children.add(pw.SizedBox(height: 16));
+
+    // --- Подвал ---
+    children.add(
+      pw.Container(
+        padding: const pw.EdgeInsets.all(12),
+        decoration: pw.BoxDecoration(
+          color: PdfColors.grey100,
+          borderRadius: pw.BorderRadius.circular(8),
+        ),
+        child: pw.Text(
+          'Страница 3/3 • Окончание отчета',
           style: pw.TextStyle(fontSize: 10, color: PdfColors.grey, font: _font),
           textAlign: pw.TextAlign.center,
         ),
