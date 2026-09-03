@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../models/config_model.dart';
 import '../models/trend_data.dart';
 import '../services/modbus_manager.dart';
+import '../services/modbus_service.dart';
+import '../services/modbus_rtu_service.dart';
 import '../services/logger_service.dart';
 
 /// Экран автоматической настройки ПИД-регулятора по кривой разгона
@@ -30,6 +32,9 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
     text: '30',
   );
 
+  // ─── ВЫБОР ТИПА РЕГУЛЯТОРА ───
+  String _controllerType = 'pid'; // 'pid' или 'pi'
+
   // ─── Выбор датчика ───
   List<ItemConfig> _availableSensors = [];
   ItemConfig? _selectedSensor;
@@ -52,19 +57,14 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
   bool _hasStartedRising = false;
 
   // ─── Результаты расчёта ───
-  double? _gainK; // K - коэффициент усиления объекта
-  double? _delayTime; // τ - время задержки
-  double? _timeConstant; // T - постоянная времени
+  double? _gainK;
+  double? _delayTime;
+  double? _timeConstant;
 
-  // ─── Коэффициенты для классической формулы ───
-  // Формула: u(t) = Kp * (E(t) + (1/Ti) * ∫E(t)dt + Td * dE(t)/dt)
-  double? _kp; // Kp - пропорциональный коэффициент
-  double? _ti; // Ti - время интегрирования (сек)
-  double? _td; // Td - время дифференцирования (сек)
-
-  // ─── Для обратной совместимости ───
-  // double? _ki;
-  // double? _kd;
+  // ─── Коэффициенты регулятора ───
+  double? _kp;
+  double? _ti;
+  double? _td;
 
   // ─── Найденные элементы настроек ПИД ───
   ItemConfig? _kpItem;
@@ -95,7 +95,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
     final system = config.getSystem(widget.systemId);
     if (system == null) return;
 
-    // Ищем подменю "Настройки" или "settings"
     for (final submenu in system.submenus.values) {
       if (submenu.type != 'settings') continue;
 
@@ -103,7 +102,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
         for (final group in submenu.groups!) {
           for (final item in group.items) {
             final name = item.name.toLowerCase();
-            // Ищем по ключевым словам
             if (name.contains('коэф пропорц') ||
                 name.contains('пропорц') ||
                 name.contains('kp')) {
@@ -266,7 +264,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
   Future<void> _startTest() async {
     if (!mounted) return;
 
-    // 1. Проверка настроек
     if (_selectedSensor == null) {
       _showError('Выберите датчик обратной связи');
       return;
@@ -280,14 +277,12 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
       }
     }
 
-    // 2. Проверка подключения
     final modbusManager = ModbusManager(context);
     if (!modbusManager.connected) {
       _showError('Нет подключения к контроллеру');
       return;
     }
 
-    // 3. Проверка наличия элементов управления
     final modeItem = _findModeItem();
     if (modeItem == null) {
       _showError('Не найден элемент "Режим работы" в конфигурации');
@@ -312,7 +307,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
       }
     }
 
-    // 4. Проверка стационарности (5 секунд)
     final initialTemp = await modbusManager.readParameterValue(
       _selectedSensor!,
     );
@@ -326,7 +320,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
         ? initialTemp
         : (initialTemp as num).toDouble();
 
-    // Проверяем стабильность в течение 5 секунд
     _statusMessage = '⏳ Проверка стабильности температуры...';
     setState(() {});
 
@@ -356,7 +349,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
       return;
     }
 
-    // 5. Диалог подтверждения
     final travelTime = double.tryParse(_travelTimeController.text) ?? 30;
     final confirm = await showDialog<bool>(
       context: context,
@@ -391,7 +383,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
 
     if (confirm != true || !mounted) return;
 
-    // 6. Блокируем UI
     setState(() {
       _isRunning = true;
       _isFinished = false;
@@ -400,7 +391,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
     });
 
     try {
-      // 7. Переключаем клапан в ручной режим
       final successMode = await modbusManager.setBit(
         modeItem.address,
         modeItem.bit ?? 0,
@@ -413,7 +403,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
         return;
       }
 
-      // 8. Открываем клапан
       if (_isAnalog) {
         final setpointItem = _findSetpointItem()!;
         final openingValue = _valveOpening.round();
@@ -467,10 +456,8 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
         );
       }
 
-      // 9. Ждём стабилизации клапана
       await Future.delayed(const Duration(seconds: 2));
 
-      // 10. Сохраняем начальную температуру
       final startTemp = await modbusManager.readParameterValue(
         _selectedSensor!,
       );
@@ -496,7 +483,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
         TrendPoint(timestamp: DateTime.now(), value: _initialTemperature),
       );
 
-      // 11. Запускаем таймер
       setState(() {
         _statusMessage = '📊 Сбор данных...';
       });
@@ -564,94 +550,208 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════
+  // СБОР ДАННЫХ С АВТОВОССТАНОВЛЕНИЕМ ПОДКЛЮЧЕНИЯ
+  // ═══════════════════════════════════════════════════════════════
+
   Future<void> _collectData() async {
     if (!mounted) return;
     if (_isFinished) return;
 
     final modbusManager = ModbusManager(context);
+
     if (!modbusManager.connected) {
-      _stopTest();
-      _showError('❌ Потеря подключения к контроллеру');
-      return;
+      LoggerService().log(
+        '⚠️ Потеря связи, попытка восстановления...',
+        level: LogLevel.warning,
+      );
+      final restored = await _reconnect();
+      if (!restored) {
+        _stopTest();
+        _showError('❌ Потеря подключения к контроллеру');
+        return;
+      }
     }
 
     try {
       final value = await modbusManager.readParameterValue(_selectedSensor!);
-      if (value == null) return;
-
-      final currentTemp = value is double ? value : (value as num).toDouble();
-
-      setState(() {
-        _curvePoints.add(
-          TrendPoint(timestamp: DateTime.now(), value: currentTemp),
-        );
-      });
-
-      final totalRise = currentTemp - _initialTemperature;
-
-      if (!_hasStartedRising && totalRise > 0.5) {
-        _hasStartedRising = true;
-        _riseStartTime = DateTime.now();
+      if (value == null) {
         LoggerService().log(
-          '📈 Рост температуры начался в ${_riseStartTime!.toLocal().toString().substring(0, 19)}',
+          '⚠️ Не удалось прочитать датчик, попытка восстановления...',
+          level: LogLevel.warning,
         );
-      }
-
-      final currentInt = currentTemp.round();
-      final previousInt = _temperatureHistory.round();
-
-      if (currentInt == previousInt) {
-        if (_hasStartedRising) {
-          _stableCounter++;
-        }
-      } else {
-        _stableCounter = 0;
-      }
-
-      _temperatureHistory = currentTemp;
-
-      // ─── УСЛОВИЯ ЗАВЕРШЕНИЯ ───
-
-      // 1. Нормальное завершение: рост >= 2°C и стабильность 5 сек
-      if (_stableCounter >= 5 && _hasStartedRising && totalRise >= 2.0) {
-        LoggerService().log(
-          '✅ Тест завершён: температура стабилизировалась (рост ${totalRise.toStringAsFixed(1)}°C)',
-        );
-        _stopTest();
-        return;
-      }
-
-      // 2. Завершение с малым ростом: стабильность 10 сек, но рост < 2°C
-      if (_stableCounter >= 10 && _hasStartedRising && totalRise < 2.0) {
-        LoggerService().log(
-          '⚠️ Тест завершён: температура стабилизировалась, но рост всего ${totalRise.toStringAsFixed(1)}°C',
-        );
-        _stopTest();
-        if (mounted) {
-          setState(() {
-            _statusMessage =
-                '⚠️ Рост температуры мал (${totalRise.toStringAsFixed(1)}°C). Увеличьте открытие клапана.';
-          });
-        }
-        return;
-      }
-
-      // 3. Таймаут 5 минут
-      if (_startTime != null) {
-        final elapsed = DateTime.now().difference(_startTime!);
-        if (elapsed.inSeconds > 300) {
-          LoggerService().log('⏰ Таймаут теста (5 минут)');
+        final restored = await _reconnect();
+        if (restored) {
+          final retryValue = await modbusManager.readParameterValue(
+            _selectedSensor!,
+          );
+          if (retryValue == null) {
+            _stopTest();
+            _showError('❌ Не удалось прочитать датчик после восстановления');
+            return;
+          }
+          _processDataPoint(retryValue);
+          return;
+        } else {
           _stopTest();
-          _showError('⏰ Тест превысил 5 минут. Проверьте, открылся ли клапан.');
+          _showError('❌ Потеря подключения к контроллеру');
           return;
         }
       }
 
-      if (mounted) {
-        setState(() {});
-      }
+      _processDataPoint(value);
     } catch (e) {
       LoggerService().log('❌ Ошибка сбора данных: $e', level: LogLevel.error);
+      final restored = await _reconnect();
+      if (restored) {
+        try {
+          final retryValue = await modbusManager.readParameterValue(
+            _selectedSensor!,
+          );
+          if (retryValue != null) {
+            _processDataPoint(retryValue);
+            return;
+          }
+        } catch (_) {}
+      }
+      _stopTest();
+      _showError('❌ Потеря подключения к контроллеру');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ВОССТАНОВЛЕНИЕ ПОДКЛЮЧЕНИЯ
+  // ═══════════════════════════════════════════════════════════════
+
+  Future<bool> _reconnect() async {
+    if (!mounted) return false;
+
+    try {
+      final config = Provider.of<ConfigModel>(context, listen: false);
+      final modbus = Provider.of<ModbusService>(context, listen: false);
+      final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
+
+      if (modbus.connected) {
+        modbus.disconnect();
+      }
+      if (rtuService.connected) {
+        await rtuService.disconnect();
+      }
+
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      if (!mounted) return false;
+
+      if (config.connectionType == 'rtu' && config.rtuConfig != null) {
+        final success = await rtuService.connect(
+          port: config.rtuConfig!.port,
+          slaveId: config.modbusServer.slaveId,
+          timeout: config.modbusServer.timeout,
+          baudRate: config.rtuConfig!.baudRate,
+        );
+        if (success) {
+          LoggerService().log('✅ RTU переподключен');
+          return true;
+        }
+      } else {
+        final success = await modbus.connect(
+          config.modbusServer.ip,
+          port: config.modbusServer.port,
+          slaveId: config.modbusServer.slaveId,
+          timeout: config.modbusServer.timeout,
+        );
+        if (success) {
+          LoggerService().log('✅ TCP переподключен');
+          return true;
+        }
+      }
+
+      LoggerService().log(
+        '❌ Не удалось переподключиться',
+        level: LogLevel.error,
+      );
+      return false;
+    } catch (e) {
+      LoggerService().log(
+        '❌ Ошибка переподключения: $e',
+        level: LogLevel.error,
+      );
+      return false;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // ОБРАБОТКА ТОЧКИ ДАННЫХ
+  // ═══════════════════════════════════════════════════════════════
+
+  void _processDataPoint(dynamic value) {
+    if (!mounted) return;
+
+    final currentTemp = value is double ? value : (value as num).toDouble();
+
+    setState(() {
+      _curvePoints.add(
+        TrendPoint(timestamp: DateTime.now(), value: currentTemp),
+      );
+    });
+
+    final totalRise = currentTemp - _initialTemperature;
+
+    if (!_hasStartedRising && totalRise > 0.5) {
+      _hasStartedRising = true;
+      _riseStartTime = DateTime.now();
+      LoggerService().log(
+        '📈 Рост температуры начался в ${_riseStartTime!.toLocal().toString().substring(0, 19)}',
+      );
+    }
+
+    final currentInt = currentTemp.round();
+    final previousInt = _temperatureHistory.round();
+
+    if (currentInt == previousInt) {
+      if (_hasStartedRising) {
+        _stableCounter++;
+      }
+    } else {
+      _stableCounter = 0;
+    }
+
+    _temperatureHistory = currentTemp;
+
+    if (_stableCounter >= 5 && _hasStartedRising && totalRise >= 2.0) {
+      LoggerService().log(
+        '✅ Тест завершён: температура стабилизировалась (рост ${totalRise.toStringAsFixed(1)}°C)',
+      );
+      _stopTest();
+      return;
+    }
+
+    if (_stableCounter >= 10 && _hasStartedRising && totalRise < 2.0) {
+      LoggerService().log(
+        '⚠️ Тест завершён: температура стабилизировалась, но рост всего ${totalRise.toStringAsFixed(1)}°C',
+      );
+      _stopTest();
+      if (mounted) {
+        setState(() {
+          _statusMessage =
+              '⚠️ Рост температуры мал (${totalRise.toStringAsFixed(1)}°C). Увеличьте открытие клапана.';
+        });
+      }
+      return;
+    }
+
+    if (_startTime != null) {
+      final elapsed = DateTime.now().difference(_startTime!);
+      if (elapsed.inSeconds > 300) {
+        LoggerService().log('⏰ Таймаут теста (5 минут)');
+        _stopTest();
+        _showError('⏰ Тест превысил 5 минут. Проверьте, открылся ли клапан.');
+        return;
+      }
+    }
+
+    if (mounted) {
+      setState(() {});
     }
   }
 
@@ -740,13 +840,11 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
       return;
     }
 
-    // ─── 1. Коэффициент усиления K ───
     _gainK = totalChange / _valveOpening;
     _gainK = double.parse(_gainK!.toStringAsFixed(3));
 
     LoggerService().log('📊 K (усиление) = $_gainK °C/%');
 
-    // ─── 2. Время задержки τ (тау) ───
     if (_riseStartTime != null) {
       _delayTime = _riseStartTime!
           .difference(_curvePoints.first.timestamp)
@@ -759,12 +857,11 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
           break;
         }
       }
-      if (_delayTime == null) _delayTime = 0;
+      _delayTime ??= 0;
     }
 
     LoggerService().log('📊 τ (задержка) = ${_delayTime} сек');
 
-    // ─── 3. Постоянная времени T ───
     final targetChange = firstTemp + totalChange * 0.632;
     bool found = false;
     for (int i = 0; i < _curvePoints.length; i++) {
@@ -782,7 +879,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
 
     LoggerService().log('📊 T (постоянная времени) = ${_timeConstant} сек');
 
-    // ─── 4. РАСЧЕТ КОЭФФИЦИЕНТОВ ───
     final K = _gainK!;
     final tau = _delayTime!;
     final T = _timeConstant!;
@@ -797,24 +893,15 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
       return;
     }
 
-    // ─── МЕТОД ЦИГЛЕРА-НИКОЛСА (агрессивный) ───
-    final kpZiegler = 1.2 * T / (K * tau);
-    final tiZiegler = 2 * tau;
-    final tdZiegler = 0.5 * tau;
-
-    // ─── МЕТОД КОППА-КЛОЯ (более мягкий, рекомендуется) ───
-    final kpCopp = (1.2 * T / (K * tau)) * 0.6;
-    final tiCopp = (2 * tau) * 1.5;
-    final tdCopp = (0.5 * tau) * 1.5;
-
-    // ─── ИСПОЛЬЗУЕМ МЯГКИЙ ВАРИАНТ ───
-    _kp = double.parse(kpCopp.toStringAsFixed(2));
-    _ti = double.parse(tiCopp.toStringAsFixed(1));
-    _td = double.parse(tdCopp.toStringAsFixed(2));
-
-    // Для обратной совместимости
-    // _ki = double.parse((_kp! / _ti!).toStringAsFixed(3));
-    // _kd = double.parse((_kp! * _td!).toStringAsFixed(2));
+    if (_controllerType == 'pi') {
+      _kp = double.parse((0.9 * T / (K * tau)).toStringAsFixed(2));
+      _ti = double.parse((3.33 * tau).toStringAsFixed(1));
+      _td = 0.0;
+    } else {
+      _kp = double.parse((1.2 * T / (K * tau)).toStringAsFixed(2));
+      _ti = double.parse((2 * tau).toStringAsFixed(1));
+      _td = double.parse((0.5 * tau).toStringAsFixed(2));
+    }
 
     setState(() {
       _isRunning = false;
@@ -822,21 +909,16 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
       _statusMessage = '✅ Тест завершён!';
     });
 
+    final typeText = _controllerType == 'pi' ? 'ПИ' : 'ПИД';
     LoggerService().log('📊 ===== РЕЗУЛЬТАТЫ НАСТРОЙКИ =====');
     LoggerService().log('📊 Параметры объекта:');
     LoggerService().log('   K (усиление) = $K °C/%');
     LoggerService().log('   τ (задержка) = $tau сек');
     LoggerService().log('   T (постоянная) = $T сек');
-    LoggerService().log('📊 Коэффициенты регулятора (рекомендуемые):');
+    LoggerService().log('📊 Коэффициенты регулятора ($typeText):');
     LoggerService().log('   Kp (пропорциональный) = $_kp');
     LoggerService().log('   Ti (интегрирование) = $_ti сек');
     LoggerService().log('   Td (дифференцирование) = $_td сек');
-    LoggerService().log(
-      '📊 Альтернативные настройки (агрессивные, Циглера-Николса):',
-    );
-    LoggerService().log('   Kp = ${kpZiegler.toStringAsFixed(2)}');
-    LoggerService().log('   Ti = ${tiZiegler.toStringAsFixed(1)} сек');
-    LoggerService().log('   Td = ${tdZiegler.toStringAsFixed(2)} сек');
     LoggerService().log('📊 ===================================');
   }
 
@@ -850,7 +932,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
       return;
     }
 
-    // Проверяем, найдены ли элементы в конфиге
     if (_kpItem == null) {
       _showError('Не найден элемент "Коэф пропорц" в конфигурации');
       return;
@@ -859,16 +940,19 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
       _showError('Не найден элемент "Время интегр" в конфигурации');
       return;
     }
-    if (_tdItem == null) {
+
+    final bool isPi = _controllerType == 'pi';
+
+    if (!isPi && _td! > 0 && _tdItem == null) {
       _showError('Не найден элемент "Время дифференц" в конфигурации');
       return;
     }
 
-    // Подтверждение сохранения
+    final typeText = isPi ? 'ПИ' : 'ПИД';
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('💾 Сохранить коэффициенты?'),
+        title: Text('💾 Сохранить коэффициенты ($typeText)?'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -881,11 +965,22 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
             Text(
               '• ${_tiItem!.name}: ${_ti!.toStringAsFixed(1)} → адрес ${_tiItem!.address}',
             ),
-            Text(
-              '• ${_tdItem!.name}: ${_td!.toStringAsFixed(2)} → адрес ${_tdItem!.address}',
-            ),
+            if (isPi)
+              const Text(
+                '• Td (дифференцирование): 0 (отключено)',
+                style: TextStyle(color: Colors.grey),
+              )
+            else if (_td! > 0 && _tdItem != null)
+              Text(
+                '• ${_tdItem!.name}: ${_td!.toStringAsFixed(2)} → адрес ${_tdItem!.address}',
+              )
+            else
+              const Text(
+                '• Td (дифференцирование): 0',
+                style: TextStyle(color: Colors.grey),
+              ),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               '⚠️ Убедитесь, что регулятор переведён в ручной режим!',
               style: TextStyle(color: Colors.orange),
             ),
@@ -910,7 +1005,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
 
     if (confirm != true || !mounted) return;
 
-    // Сохраняем
     final modbusManager = ModbusManager(context);
     if (!modbusManager.connected) {
       _showError('Нет подключения к ПЛК');
@@ -924,8 +1018,7 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
     try {
       bool allSuccess = true;
 
-      // Сохраняем Kp
-      final kpValue = _kp!.round(); // Так как тип int
+      final kpValue = _kp!.round();
       final successKp = await modbusManager.writeRegister(
         _kpItem!.address,
         kpValue,
@@ -940,8 +1033,7 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
         );
       }
 
-      // Сохраняем Ti
-      final tiValue = _ti!.round(); // Так как тип int
+      final tiValue = _ti!.round();
       final successTi = await modbusManager.writeRegister(
         _tiItem!.address,
         tiValue,
@@ -956,35 +1048,37 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
         );
       }
 
-      // Сохраняем Td
-      final tdValue = _td!.round(); // Так как тип int
-      final successTd = await modbusManager.writeRegister(
-        _tdItem!.address,
-        tdValue,
-        type: _tdItem!.type,
-      );
-      if (!successTd) {
-        allSuccess = false;
-        LoggerService().log('❌ Ошибка сохранения Td', level: LogLevel.error);
-      } else {
-        LoggerService().log(
-          '✅ Td сохранён: $tdValue → адрес ${_tdItem!.address}',
+      if (_tdItem != null) {
+        final tdValue = isPi ? 0 : (_td! > 0 ? _td!.round() : 0);
+        final successTd = await modbusManager.writeRegister(
+          _tdItem!.address,
+          tdValue,
+          type: _tdItem!.type,
         );
+        if (!successTd) {
+          allSuccess = false;
+          LoggerService().log('❌ Ошибка сохранения Td', level: LogLevel.error);
+        } else {
+          LoggerService().log(
+            '✅ Td сохранён: $tdValue → адрес ${_tdItem!.address}${isPi ? ' (ПИ-регулятор, Td=0)' : ''}',
+          );
+        }
+      } else {
+        LoggerService().log('ℹ️ Td отключён (элемент не найден в конфиге)');
       }
 
       if (allSuccess && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Коэффициенты успешно сохранены в ПЛК!'),
+          SnackBar(
+            content: Text('✅ Коэффициенты ($typeText) сохранены в ПЛК!'),
             backgroundColor: Colors.green,
-            duration: Duration(seconds: 3),
+            duration: const Duration(seconds: 3),
           ),
         );
         setState(() {
           _statusMessage = '✅ Коэффициенты сохранены!';
         });
 
-        // Обновляем экран настроек через 1 секунду
         Future.delayed(const Duration(seconds: 1), () {
           if (mounted) {
             Navigator.pop(context, true);
@@ -1165,6 +1259,76 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
 
             const Divider(),
 
+            const Text(
+              'Тип регулятора:',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: RadioListTile<String>(
+                    title: const Text('ПИД'),
+                    value: 'pid',
+                    groupValue: _controllerType,
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    onChanged: _isRunning
+                        ? null
+                        : (value) {
+                            setState(() => _controllerType = value!);
+                          },
+                  ),
+                ),
+                Expanded(
+                  child: RadioListTile<String>(
+                    title: const Text('ПИ'),
+                    value: 'pi',
+                    groupValue: _controllerType,
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    onChanged: _isRunning
+                        ? null
+                        : (value) {
+                            setState(() => _controllerType = value!);
+                          },
+                  ),
+                ),
+              ],
+            ),
+            if (_controllerType == 'pi')
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey[800] : Colors.blue[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isDark ? Colors.grey[700]! : Colors.blue[200]!,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 16,
+                      color: isDark ? Colors.blue[300] : Colors.blue[700],
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'ПИ-регулятор: дифференцирование (Td) будет отключено (установлено в 0)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? Colors.blue[300] : Colors.blue[700],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            const SizedBox(height: 8),
+
             const Text('Датчик обратной связи:'),
             const SizedBox(height: 4),
             Container(
@@ -1200,7 +1364,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
               ),
             ),
 
-            // Информация о найденных адресах
             if (_kpItem != null || _tiItem != null || _tdItem != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
@@ -1242,6 +1405,15 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
                           '  • Td: ${_tdItem!.name} → адрес ${_tdItem!.address}',
                           style: TextStyle(
                             fontSize: 11,
+                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                          ),
+                        ),
+                      if (_controllerType == 'pi')
+                        Text(
+                          '  • Td будет установлен в 0 (отключён)',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontStyle: FontStyle.italic,
                             color: isDark ? Colors.grey[400] : Colors.grey[600],
                           ),
                         ),
@@ -1366,6 +1538,8 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
   // ═══════════════════════════════════════════════════════════════
 
   Widget _buildResultsCard(bool isDark) {
+    final typeText = _controllerType == 'pi' ? 'ПИ' : 'ПИД';
+
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1375,13 +1549,12 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              '📊 Результаты расчёта ПИД-коэффициентов',
+            Text(
+              '📊 Результаты расчёта ($typeText)',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
 
-            // ─── Параметры объекта ───
             const Text(
               'Параметры объекта:',
               style: TextStyle(
@@ -1423,7 +1596,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
             const Divider(),
             const SizedBox(height: 4),
 
-            // ─── Коэффициенты регулятора ───
             const Text(
               'Коэффициенты регулятора:',
               style: TextStyle(
@@ -1459,7 +1631,7 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
                     'Td (дифф.)',
                     _td,
                     'сек',
-                    Colors.red,
+                    _td! > 0 ? Colors.red : Colors.grey,
                     fontSize: 22,
                   ),
                 ),
@@ -1468,7 +1640,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
 
             const SizedBox(height: 8),
 
-            // ─── Информация о сохранении ───
             if (_kpItem != null || _tiItem != null || _tdItem != null)
               Container(
                 padding: const EdgeInsets.all(8),
@@ -1503,12 +1674,21 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
                           color: isDark ? Colors.grey[400] : Colors.grey[600],
                         ),
                       ),
-                    if (_tdItem != null)
+                    if (_tdItem != null && _td! > 0)
                       Text(
                         '  • ${_tdItem!.name} = ${_td?.toStringAsFixed(0) ?? "--"} → адрес ${_tdItem!.address}',
                         style: TextStyle(
                           fontSize: 11,
                           color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        ),
+                      ),
+                    if (_controllerType == 'pi')
+                      const Text(
+                        '  • Td (дифференцирование) = 0 (отключено)',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontStyle: FontStyle.italic,
+                          color: Colors.grey,
                         ),
                       ),
                   ],
@@ -1517,13 +1697,12 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
 
             const SizedBox(height: 12),
 
-            // ─── Кнопка сохранения ───
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: _kp == null ? null : _savePidParams,
                 icon: const Icon(Icons.save),
-                label: const Text('💾 Сохранить в ПЛК'),
+                label: Text('💾 Сохранить ($typeText) в ПЛК'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.orange,
                   foregroundColor: Colors.white,
@@ -1537,7 +1716,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
 
             const SizedBox(height: 8),
 
-            // ─── Рекомендация ───
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
@@ -1554,7 +1732,7 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Нажмите "Сохранить в ПЛК" для записи коэффициентов в контроллер.',
+                      'Нажмите "Сохранить" для записи коэффициентов в контроллер.',
                       style: TextStyle(
                         fontSize: 11,
                         color: isDark ? Colors.grey[400] : Colors.grey[600],
@@ -1569,8 +1747,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
       ),
     );
   }
-
-  // ─── ВСПОМОГАТЕЛЬНЫЙ МЕТОД ДЛЯ ОТОБРАЖЕНИЯ РЕЗУЛЬТАТА ───
 
   Widget _buildResultItem(
     String label,
@@ -1591,7 +1767,7 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
           style: TextStyle(
             fontSize: fontSize,
             fontWeight: FontWeight.bold,
-            color: value != null ? color : Colors.grey,
+            color: color,
           ),
         ),
       ],
