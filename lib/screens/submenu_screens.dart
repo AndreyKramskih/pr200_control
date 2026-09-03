@@ -1219,6 +1219,8 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
           onSwitchMode: _switchValveMode,
           onSendCommand: _sendValveCommand,
           onSetSetpoint: _onSetSetpoint,
+          systemId: widget.systemId, // ⬅️ НОВЫЙ
+          submenuId: widget.submenuId, // ⬅️ НОВЫЙ
         );
       case 'settings':
         return SettingsWidget(

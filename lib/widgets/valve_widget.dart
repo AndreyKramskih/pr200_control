@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/config_model.dart';
 import '../core/utils/theme_utils.dart';
+import '../screens/pid_tuning_screen.dart';
 
 class ValveWidget extends StatelessWidget {
   final SubmenuConfig submenu;
@@ -10,6 +11,10 @@ class ValveWidget extends StatelessWidget {
   final Function(int, int) onSendCommand;
   final Function(int, dynamic) onSetSetpoint;
 
+  // ⬇️ НОВЫЕ ПАРАМЕТРЫ
+  final String systemId;
+  final String submenuId;
+
   const ValveWidget({
     super.key,
     required this.submenu,
@@ -18,6 +23,8 @@ class ValveWidget extends StatelessWidget {
     required this.onSwitchMode,
     required this.onSendCommand,
     required this.onSetSetpoint,
+    required this.systemId, // ⬅️ НОВЫЙ
+    required this.submenuId, // ⬅️ НОВЫЙ
   });
 
   @override
@@ -42,6 +49,7 @@ class ValveWidget extends StatelessWidget {
 
     final children = <Widget>[];
 
+    // --- Датчики/элементы ---
     if (submenu.items != null) {
       for (final item in submenu.items!) {
         if (isAnalog) {
@@ -68,6 +76,7 @@ class ValveWidget extends StatelessWidget {
       children.add(_buildSetpointControl(setpointItem, value, context));
     }
 
+    // --- Управление клапаном (кнопки из конфига) ---
     if (submenu.controls != null && submenu.controls!.isNotEmpty) {
       children.addAll([
         const SizedBox(height: 16),
@@ -88,6 +97,42 @@ class ValveWidget extends StatelessWidget {
         ),
       ]);
     }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 🔥 ВАЖНО: КНОПКА ПИД-НАСТРОЙКИ ВСЕГДА В КОНЦЕ СПИСКА
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    children.addAll([
+      const SizedBox(height: 16),
+      const Divider(color: Colors.grey),
+      const SizedBox(height: 8),
+      SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => PidTuningScreen(
+                  systemId: systemId,
+                  submenuId: submenuId,
+                  valveSubmenu: submenu, // ⬅️ Передаём сам объект клапана
+                ),
+              ),
+            );
+          },
+          icon: const Icon(Icons.tune),
+          label: const Text('⚙️ ПИД-настройка'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.purple,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        ),
+      ),
+    ]);
 
     return Container(
       color: ThemeUtils.scaffoldColor(context),
