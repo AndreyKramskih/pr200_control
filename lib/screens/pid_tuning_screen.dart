@@ -845,19 +845,25 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
 
     LoggerService().log('📊 K (усиление) = $_gainK °C/%');
 
-    if (_riseStartTime != null) {
-      _delayTime = _riseStartTime!
-          .difference(_curvePoints.first.timestamp)
-          .inSeconds
-          .toDouble();
-    } else {
-      for (int i = 1; i < _curvePoints.length; i++) {
-        if (_curvePoints[i].value > _curvePoints[0].value + 0.5) {
-          _delayTime = i.toDouble();
-          break;
-        }
-      }
-      _delayTime ??= 0;
+    // if (_riseStartTime != null) {
+    //   _delayTime = _riseStartTime!
+    //       .difference(_curvePoints.first.timestamp)
+    //       .inSeconds
+    //       .toDouble();
+    // } else {
+    //   for (int i = 1; i < _curvePoints.length; i++) {
+    //     if (_curvePoints[i].value > _curvePoints[0].value + 0.5) {
+    //       _delayTime = i.toDouble();
+    //       break;
+    //     }
+    //   }
+    //   _delayTime ??= 0;
+    // }
+
+    // Новый расчёт τ через касательную
+    _delayTime = _calculateTauByTangent(_curvePoints);
+    if (_delayTime == null || _delayTime! < 0) {
+      _delayTime = 0;
     }
 
     LoggerService().log('📊 τ (задержка) = ${_delayTime} сек');
@@ -893,14 +899,33 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
       return;
     }
 
+    // if (_controllerType == 'pi') {
+    //   _kp = double.parse((0.9 * T / (K * tau)).toStringAsFixed(2));
+    //   _ti = double.parse((3.33 * tau).toStringAsFixed(1));
+    //   _td = 0.0;
+    // } else {
+    //   _kp = double.parse((1.2 * T / (K * tau)).toStringAsFixed(2));
+    //   _ti = double.parse((2 * tau).toStringAsFixed(1));
+    //   _td = double.parse((0.5 * tau).toStringAsFixed(2));
+    // }
+
+    // Расчёт по методу CHR (Cohen-Coon)
     if (_controllerType == 'pi') {
-      _kp = double.parse((0.9 * T / (K * tau)).toStringAsFixed(2));
-      _ti = double.parse((3.33 * tau).toStringAsFixed(1));
+      // ПИ-регулятор
+      _kp = double.parse((1.35 / K * (tau / T) + 0.27).toStringAsFixed(2));
+      _ti = double.parse(
+        (2.5 * tau / (1 + 0.6 * (tau / T))).toStringAsFixed(1),
+      );
       _td = 0.0;
     } else {
-      _kp = double.parse((1.2 * T / (K * tau)).toStringAsFixed(2));
-      _ti = double.parse((2 * tau).toStringAsFixed(1));
-      _td = double.parse((0.5 * tau).toStringAsFixed(2));
+      // ПИД-регулятор (формулы CHR для ПИД)
+      _kp = double.parse((1.35 / K * (tau / T) + 0.27).toStringAsFixed(2));
+      _ti = double.parse(
+        (2.5 * tau / (1 + 0.6 * (tau / T))).toStringAsFixed(1),
+      );
+      _td = double.parse(
+        (0.37 * tau / (1 + 0.2 * (tau / T))).toStringAsFixed(2),
+      );
     }
 
     setState(() {
@@ -920,6 +945,46 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
     LoggerService().log('   Ti (интегрирование) = $_ti сек');
     LoggerService().log('   Td (дифференцирование) = $_td сек');
     LoggerService().log('📊 ===================================');
+  }
+
+  /// Расчёт времени запаздывания (τ) методом касательной к кривой разгона.
+  /// Возвращает время в секундах от начала теста до пересечения касательной
+  /// с начальным уровнем температуры.
+  double? _calculateTauByTangent(List<TrendPoint> points) {
+    if (points.length < 3) return null;
+
+    // 1. Находим точку с максимальной производной (скоростью роста)
+    double maxDerivative = 0;
+    int maxIndex = 0;
+    for (int i = 1; i < points.length - 1; i++) {
+      final dy =
+          points[i + 1].value - points[i - 1].value; // центральная разность
+      final dt = points[i + 1].timestamp
+          .difference(points[i - 1].timestamp)
+          .inSeconds;
+      if (dt <= 0) continue;
+      final derivative = dy / dt;
+      if (derivative > maxDerivative) {
+        maxDerivative = derivative;
+        maxIndex = i;
+      }
+    }
+
+    if (maxDerivative <= 0) return null;
+
+    // 2. Точка касания
+    final tangentPoint = points[maxIndex];
+    final t0 = tangentPoint.timestamp
+        .difference(points.first.timestamp)
+        .inSeconds
+        .toDouble();
+    final y0 = tangentPoint.value;
+    final initialTemp = points.first.value;
+
+    // 3. Пересечение касательной с начальной температурой
+    //    y = y0 + k*(t - t0)  =>  t = t0 + (initialTemp - y0)/k
+    final tau = (initialTemp - y0) / maxDerivative + t0;
+    return tau > 0 ? tau : 0;
   }
 
   // ═══════════════════════════════════════════════════════════════
