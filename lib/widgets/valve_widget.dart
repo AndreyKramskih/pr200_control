@@ -99,40 +99,45 @@ class ValveWidget extends StatelessWidget {
     }
 
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    // 🔥 ВАЖНО: КНОПКА ПИД-НАСТРОЙКИ ВСЕГДА В КОНЦЕ СПИСКА
+    // КНОПКА ПИД-НАСТРОЙКИ – показываем только для регулирующих клапанов
     // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    children.addAll([
-      const SizedBox(height: 16),
-      const Divider(color: Colors.grey),
-      const SizedBox(height: 8),
-      SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => PidTuningScreen(
-                  systemId: systemId,
-                  submenuId: submenuId,
-                  valveSubmenu: submenu, // ⬅️ Передаём сам объект клапана
+
+    final bool showPidButton =
+        isAnalog || (submenu.controls != null && submenu.controls!.isNotEmpty);
+    if (showPidButton) {
+      children.addAll([
+        const SizedBox(height: 16),
+        const Divider(color: Colors.grey),
+        const SizedBox(height: 8),
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton.icon(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => PidTuningScreen(
+                    systemId: systemId,
+                    submenuId: submenuId,
+                    valveSubmenu: submenu, // ⬅️ Передаём сам объект клапана
+                  ),
                 ),
+              );
+            },
+            icon: const Icon(Icons.tune),
+            label: const Text('⚙️ ПИД-настройка'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.purple,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
               ),
-            );
-          },
-          icon: const Icon(Icons.tune),
-          label: const Text('⚙️ ПИД-настройка'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.purple,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
             ),
           ),
         ),
-      ),
-    ]);
+      ]);
+    }
 
     return Container(
       color: ThemeUtils.scaffoldColor(context),
