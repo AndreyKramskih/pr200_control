@@ -139,9 +139,11 @@ class ValveWidget extends StatelessWidget {
       ]);
     }
 
-    return Container(
-      color: ThemeUtils.scaffoldColor(context),
-      child: ListView(padding: const EdgeInsets.all(16), children: children),
+    return SafeArea(
+      child: Container(
+        color: ThemeUtils.scaffoldColor(context),
+        child: ListView(padding: const EdgeInsets.all(16), children: children),
+      ),
     );
   }
 
