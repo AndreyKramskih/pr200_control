@@ -7,6 +7,7 @@ import '../services/modbus_service.dart';
 import '../services/modbus_rtu_service.dart';
 import '../models/trend_data.dart';
 import '../services/logger_service.dart';
+import '../services/owen_cloud_service.dart';
 
 class TrendsScreen extends StatefulWidget {
   const TrendsScreen({super.key});
@@ -38,22 +39,22 @@ class _TrendsScreenState extends State<TrendsScreen> {
   // ✅ Определяем тип подключения по активным сервисам
   String _getConnectionType() {
     try {
-      final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
-      if (rtuService.connected) {
-        return 'rtu';
+      final config = Provider.of<ConfigModel>(context, listen: false);
+      if (config.connectionType == 'cloud') {
+        final cloud = Provider.of<OwenCloudService>(context, listen: false);
+        return cloud.connected ? 'cloud' : 'none';
       }
-    } catch (e) {
-      // RTU сервис не зарегистрирован
-    }
+    } catch (_) {}
+
+    try {
+      final rtu = Provider.of<ModbusRtuService>(context, listen: false);
+      if (rtu.connected) return 'rtu';
+    } catch (_) {}
 
     try {
       final modbus = Provider.of<ModbusService>(context, listen: false);
-      if (modbus.connected) {
-        return 'tcp';
-      }
-    } catch (e) {
-      // TCP сервис не зарегистрирован
-    }
+      if (modbus.connected) return 'tcp';
+    } catch (_) {}
 
     return 'none';
   }
@@ -395,7 +396,11 @@ class _TrendsScreenState extends State<TrendsScreen> {
                 // ✅ Иконка в зависимости от типа подключения
                 Icon(
                   _connected
-                      ? (_connectionType == 'rtu' ? Icons.usb : Icons.wifi)
+                      ? (_connectionType == 'cloud'
+                            ? Icons.cloud
+                            : (_connectionType == 'rtu'
+                                  ? Icons.usb
+                                  : Icons.wifi))
                       : Icons.wifi_off,
                   color: _connected ? Colors.green : Colors.red,
                   size: 16,
@@ -403,7 +408,11 @@ class _TrendsScreenState extends State<TrendsScreen> {
                 const SizedBox(width: 8),
                 Text(
                   _connected
-                      ? (_connectionType == 'rtu' ? 'RTU (USB)' : 'TCP/IP')
+                      ? (_connectionType == 'cloud'
+                            ? 'Owen Cloud'
+                            : (_connectionType == 'rtu'
+                                  ? 'RTU (USB)'
+                                  : 'TCP/IP'))
                       : 'Нет подключения',
                   style: TextStyle(
                     fontSize: 12,

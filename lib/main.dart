@@ -19,6 +19,7 @@ import 'screens/submenu_screens.dart';
 import 'screens/load_config_screen.dart';
 import 'screens/pin_screen.dart';
 import 'services/logger_service.dart';
+import 'services/owen_cloud_service.dart';
 
 void main() {
   runZonedGuarded(
@@ -75,6 +76,7 @@ class MyAppState extends State<MyApp> {
   bool _isLoading = true;
   bool _isPinVerified = false;
   bool _isPinRequired = false;
+  late OwenCloudService _cloudService;
 
   // ✅ Метод для обновления конфигурации
   void updateConfig(ConfigModel newConfig) {
@@ -96,6 +98,7 @@ class MyAppState extends State<MyApp> {
     });
     _checkPinAndLoad();
     _initLogger();
+    _cloudService = OwenCloudService();
   }
 
   Future<void> _initLoggerThenLoad() async {
@@ -230,6 +233,36 @@ class MyAppState extends State<MyApp> {
           level: LogLevel.error,
         );
       }
+    } else if (config.connectionType == 'cloud') {
+      final cloud = config.cloudConfig;
+      if (cloud == null || !cloud.hasCredentials) {
+        LoggerService().log('⚠️ Owen Cloud: нет логина/пароля в конфиге');
+        return;
+      }
+      try {
+        final ok = await _cloudService.connect(
+          login: cloud.login,
+          password: cloud.password,
+          deviceId: cloud.deviceId,
+          writeGroupId: cloud.writeGroupId,
+          cachedParamIds: cloud.paramIdCache,
+        );
+        if (ok) {
+          LoggerService().log('✅ Owen Cloud автоподключение успешно');
+          // Обновим кэш ID параметров
+          await _cloudService.refreshParamIds();
+        } else {
+          LoggerService().log(
+            '❌ Owen Cloud автоподключение: ${_cloudService.lastError}',
+            level: LogLevel.error,
+          );
+        }
+      } catch (e) {
+        LoggerService().log(
+          '❌ Ошибка автоподключения Owen Cloud: $e',
+          level: LogLevel.error,
+        );
+      }
     } else {
       try {
         await _modbusService.connect(
@@ -308,6 +341,7 @@ class MyAppState extends State<MyApp> {
           value: _modbusRtuService,
         ),
         ChangeNotifierProvider<ThemeProvider>.value(value: _themeProvider),
+        ChangeNotifierProvider<OwenCloudService>.value(value: _cloudService),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {

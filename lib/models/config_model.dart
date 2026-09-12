@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
+import 'owen_cloud_config.dart';
 
 class ConfigModel {
   final String projectName;
   final ModbusServer modbusServer;
   final Map<String, SystemConfig> systems;
   final ConnectionConfig connection;
-  String connectionType; // ✅ 'tcp' или 'rtu'
+  String connectionType; // 'tcp' | 'rtu' | 'cloud'
   RtuConfig? rtuConfig; // ✅ Настройки RTU
+  OwenCloudConfig? cloudConfig; // ← НОВОЕ
 
   ConfigModel({
     required this.projectName,
@@ -15,6 +17,7 @@ class ConfigModel {
     required this.connection,
     this.connectionType = 'tcp', // ✅ По умолчанию TCP
     this.rtuConfig,
+    this.cloudConfig, // ← НОВОЕ
   });
 
   factory ConfigModel.fromJson(Map<String, dynamic> json) {
@@ -31,6 +34,11 @@ class ConfigModel {
       rtuConfig: json['rtu_config'] != null
           ? RtuConfig.fromJson(json['rtu_config'] as Map<String, dynamic>)
           : null,
+      cloudConfig: json['cloud_config'] != null
+          ? OwenCloudConfig.fromJson(
+              json['cloud_config'] as Map<String, dynamic>,
+            )
+          : null, // ← НОВОЕ
     );
   }
 
@@ -54,6 +62,7 @@ class ConfigModel {
     'connection': connection.toJson(),
     'connection_type': connectionType,
     if (rtuConfig != null) 'rtu_config': rtuConfig!.toJson(),
+    if (cloudConfig != null) 'cloud_config': cloudConfig!.toJson(), // ← НОВОЕ
   };
 
   SystemConfig? getSystem(String id) => systems[id];

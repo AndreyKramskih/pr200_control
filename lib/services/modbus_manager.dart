@@ -6,6 +6,7 @@ import '../models/modbus_data.dart';
 import 'modbus_service.dart';
 import 'modbus_rtu_service.dart';
 import 'logger_service.dart';
+import 'owen_cloud_service.dart';
 
 /// Менеджер для работы с Modbus (автоматически выбирает TCP или RTU)
 class ModbusManager {
@@ -23,50 +24,51 @@ class ModbusManager {
 
   // Определяем активный сервис для операций
   dynamic get _activeService {
+    final config = Provider.of<ConfigModel>(context, listen: false);
     final modbus = Provider.of<ModbusService>(context, listen: false);
-    final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
+    final rtu = Provider.of<ModbusRtuService>(context, listen: false);
+    final cloud = Provider.of<OwenCloudService>(context, listen: false);
 
-    // Если RTU подключен - используем его
-    if (rtuService.connected) {
-      return rtuService;
-    }
-    // Иначе TCP
+    // Приоритет: если тип 'cloud' и сервис подключён — используем его
+    if (config.connectionType == 'cloud' && cloud.connected) return cloud;
+    if (rtu.connected) return rtu;
     return modbus;
   }
 
   bool get connected {
+    final config = Provider.of<ConfigModel>(context, listen: false);
     final modbus = Provider.of<ModbusService>(context, listen: false);
-    final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
-    return modbus.connected || rtuService.connected;
+    final rtu = Provider.of<ModbusRtuService>(context, listen: false);
+    final cloud = Provider.of<OwenCloudService>(context, listen: false);
+
+    if (config.connectionType == 'cloud') return cloud.connected;
+    return modbus.connected || rtu.connected;
   }
 
   // ✅ Обновляем геттер lastError
   String get lastError {
-    // Если в менеджере есть своя ошибка — возвращаем её
     if (_lastError.isNotEmpty) return _lastError;
 
-    // Иначе берём ошибку из активного сервиса
+    final config = Provider.of<ConfigModel>(context, listen: false);
     final modbus = Provider.of<ModbusService>(context, listen: false);
-    final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
+    final rtu = Provider.of<ModbusRtuService>(context, listen: false);
+    final cloud = Provider.of<OwenCloudService>(context, listen: false);
 
-    if (rtuService.connected && rtuService.lastError.isNotEmpty) {
-      return rtuService.lastError;
-    }
-    if (modbus.connected && modbus.lastError.isNotEmpty) {
+    if (config.connectionType == 'cloud') return cloud.lastError;
+    if (rtu.connected && rtu.lastError.isNotEmpty) return rtu.lastError;
+    if (modbus.connected && modbus.lastError.isNotEmpty)
       return modbus.lastError;
-    }
-    return rtuService.lastError.isNotEmpty
-        ? rtuService.lastError
-        : modbus.lastError;
+    return rtu.lastError.isNotEmpty ? rtu.lastError : modbus.lastError;
   }
 
   Map<int, int> get registerCache {
+    final config = Provider.of<ConfigModel>(context, listen: false);
     final modbus = Provider.of<ModbusService>(context, listen: false);
-    final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
+    final rtu = Provider.of<ModbusRtuService>(context, listen: false);
+    final cloud = Provider.of<OwenCloudService>(context, listen: false);
 
-    if (rtuService.connected && rtuService.registerCache.isNotEmpty) {
-      return rtuService.registerCache;
-    }
+    if (config.connectionType == 'cloud') return cloud.registerCache;
+    if (rtu.connected && rtu.registerCache.isNotEmpty) return rtu.registerCache;
     return modbus.registerCache;
   }
 
@@ -419,15 +421,13 @@ class ModbusManager {
 
   // Отключение
   Future<void> disconnect() async {
-    final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
+    final rtu = Provider.of<ModbusRtuService>(context, listen: false);
     final modbus = Provider.of<ModbusService>(context, listen: false);
+    final cloud = Provider.of<OwenCloudService>(context, listen: false);
 
-    if (rtuService.connected) {
-      await rtuService.disconnect();
-    }
-    if (modbus.connected) {
-      modbus.disconnect();
-    }
+    if (cloud.connected) await cloud.disconnect();
+    if (rtu.connected) await rtu.disconnect();
+    if (modbus.connected) modbus.disconnect();
   }
 
   // Очистка кеша

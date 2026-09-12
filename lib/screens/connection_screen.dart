@@ -10,6 +10,8 @@ import '../services/modbus_rtu_service.dart';
 import '../services/config_service.dart';
 import '../services/logger_service.dart';
 import '../services/config_manager.dart';
+import 'cloud_connection_screen.dart';
+// import '../services/owen_cloud_service.dart';
 
 class ConnectionScreen extends StatefulWidget {
   const ConnectionScreen({super.key});
@@ -506,34 +508,86 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
             ),
             const SizedBox(height: 8),
-            Row(
+            Column(
               children: [
-                Expanded(
-                  child: RadioListTile<String>(
-                    title: const Text('TCP/IP'),
-                    value: 'tcp',
-                    groupValue: _connectionType,
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    onChanged: (v) {
-                      setState(() => _connectionType = v!);
-                      _scanUsbDevices();
-                    },
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: RadioListTile<String>(
+                        title: const Text('TCP/IP'),
+                        value: 'tcp',
+                        groupValue: _connectionType,
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        onChanged: (v) {
+                          setState(() => _connectionType = v!);
+                        },
+                      ),
+                    ),
+                    Expanded(
+                      child: RadioListTile<String>(
+                        title: const Text('RTU (USB)'),
+                        value: 'rtu',
+                        groupValue: _connectionType,
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        onChanged: (v) {
+                          setState(() => _connectionType = v!);
+                          _scanUsbDevices();
+                        },
+                      ),
+                    ),
+                  ],
                 ),
-                Expanded(
-                  child: RadioListTile<String>(
-                    title: const Text('RTU (USB)'),
-                    value: 'rtu',
-                    groupValue: _connectionType,
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    onChanged: (v) {
-                      setState(() => _connectionType = v!);
-                      _scanUsbDevices();
-                    },
-                  ),
+                RadioListTile<String>(
+                  title: const Text('Owen Cloud'),
+                  subtitle: const Text('Подключение через облако Owen'),
+                  value: 'cloud',
+                  groupValue: _connectionType,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  secondary: const Icon(Icons.cloud, color: Colors.blue),
+                  onChanged: (v) {
+                    setState(() => _connectionType = v!);
+                    // Открываем отдельный экран
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const CloudConnectionScreen(),
+                      ),
+                    );
+                  },
                 ),
+                if (_connectionType == 'rtu') ...[
+                  const Divider(),
+                  _buildRtuControls(),
+                ],
+                if (_connectionType == 'cloud')
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Для настройки Owen Cloud нажмите на пункт выше',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          icon: const Icon(Icons.open_in_new),
+                          label: const Text('Открыть экран Owen Cloud'),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => const CloudConnectionScreen(),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
               ],
             ),
             if (_connectionType == 'rtu') ...[

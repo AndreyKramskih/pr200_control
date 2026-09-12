@@ -510,9 +510,12 @@
     "parity": "none"
   },
   "cloud_config": {
-  "login": "",
-  "password": "",
-  "device_id": null,
+  "login": "user@owen.cloud",
+  "password": "MySecretPassword",
+  "token": "",
+  "token_expiry": null,
+  "device_id": 248007,
+  "device_name": "ПР200-ГВС Gradient",
   "write_group_id": 0,
   "param_id_cache": {}
 }

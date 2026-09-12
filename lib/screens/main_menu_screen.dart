@@ -5,6 +5,7 @@ import '../models/config_model.dart';
 import '../providers/theme_provider.dart';
 import '../services/modbus_service.dart';
 import '../services/modbus_rtu_service.dart';
+import '../services/owen_cloud_service.dart';
 import '../screens/load_config_screen.dart';
 import '../screens/log_screen.dart';
 import '../screens/trends_screen.dart';
@@ -25,27 +26,27 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   String _statusText = 'Не подключено';
   Color _statusColor = Colors.red;
   String _connectionInfo = '';
+  ModbusService? _modbus;
+  ModbusRtuService? _rtu;
+  OwenCloudService? _cloud;
 
   @override
   void initState() {
     super.initState();
-    _checkConnection();
-
-    // ✅ Подписываемся на изменения
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final modbus = Provider.of<ModbusService>(context, listen: false);
-      final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
-      modbus.addListener(_onConnectionChanged);
-      rtuService.addListener(_onConnectionChanged);
+      if (!mounted) return;
+      _modbus?.addListener(_onConnectionChanged);
+      _rtu?.addListener(_onConnectionChanged);
+      _cloud?.addListener(_onConnectionChanged);
+      _checkConnection();
     });
   }
 
   @override
   void dispose() {
-    final modbus = Provider.of<ModbusService>(context, listen: false);
-    final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
-    modbus.removeListener(_onConnectionChanged);
-    rtuService.removeListener(_onConnectionChanged);
+    _modbus?.removeListener(_onConnectionChanged);
+    _rtu?.removeListener(_onConnectionChanged);
+    _cloud?.removeListener(_onConnectionChanged);
     super.dispose();
   }
 
@@ -54,15 +55,26 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   }
 
   void _checkConnection() {
+    final config = Provider.of<ConfigModel>(context, listen: false);
     final modbus = Provider.of<ModbusService>(context, listen: false);
-    final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
+    final rtu = Provider.of<ModbusRtuService>(context, listen: false);
+    final cloud = Provider.of<OwenCloudService>(context, listen: false);
 
     setState(() {
-      // ✅ Проверяем RTU первым (он имеет приоритет)
-      if (rtuService.connected) {
+      if (config.connectionType == 'cloud') {
+        if (cloud.connected) {
+          _statusText = 'Подключено (Cloud)';
+          _statusColor = Colors.green;
+          _connectionInfo = 'ID ${cloud.deviceId ?? "?"}';
+        } else {
+          _statusText = 'Не подключено (Cloud)';
+          _statusColor = Colors.red;
+          _connectionInfo = '';
+        }
+      } else if (rtu.connected) {
         _statusText = 'Подключено (USB)';
         _statusColor = Colors.green;
-        _connectionInfo = rtuService.portName;
+        _connectionInfo = rtu.portName;
       } else if (modbus.connected) {
         _statusText = 'Подключено (WiFi)';
         _statusColor = Colors.green;
@@ -73,6 +85,14 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
         _connectionInfo = '';
       }
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _modbus ??= Provider.of<ModbusService>(context, listen: false);
+    _rtu ??= Provider.of<ModbusRtuService>(context, listen: false);
+    _cloud ??= Provider.of<OwenCloudService>(context, listen: false);
   }
 
   Future<void> _createReport(BuildContext context) async {
@@ -241,8 +261,12 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     final themeProvider = Provider.of<ThemeProvider>(context);
 
     // ✅ Определяем подключение по состоянию сервисов
+    final cloud = Provider.of<OwenCloudService>(context);
+    final bool isCloud = config.connectionType == 'cloud';
     final bool isRtu = rtuService.connected;
-    final bool isConnected = rtuService.connected || modbus.connected;
+    final bool isConnected = isCloud
+        ? cloud.connected
+        : (rtuService.connected || modbus.connected);
 
     return Scaffold(
       appBar: AppBar(
@@ -429,9 +453,11 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                     children: [
                       if (!isConnected)
                         Tooltip(
-                          message: isRtu
-                              ? rtuService.lastError
-                              : modbus.lastError,
+                          message: isCloud
+                              ? cloud.lastError
+                              : (isRtu
+                                    ? rtuService.lastError
+                                    : modbus.lastError),
                           child: const Icon(
                             Icons.error_outline,
                             color: Colors.orange,
@@ -768,6 +794,8 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     final config = Provider.of<ConfigModel>(context, listen: false);
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
     final bool isRtu = rtuService.connected;
+    final isCloud = config.connectionType == 'cloud';
+    final cloud = Provider.of<OwenCloudService>(context, listen: false);
 
     showDialog(
       context: context,
@@ -790,7 +818,23 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                     : (modbus.connected ? 'Подключено' : 'Не подключено'),
               ),
               const Divider(),
-              if (isRtu) ...[
+              if (isCloud) ...[
+                _buildDebugRow(
+                  'Owen Cloud',
+                  cloud.connected ? 'Подключено' : 'Отключено',
+                ),
+                _buildDebugRow('Device ID', cloud.deviceId?.toString() ?? '—'),
+                _buildDebugRow(
+                  'Параметров в кэше',
+                  cloud.paramIdCache.length.toString(),
+                ),
+                _buildDebugRow(
+                  'Токен',
+                  cloud.token != null
+                      ? '${cloud.token!.substring(0, 8)}...'
+                      : '—',
+                ),
+              ] else if (isRtu) ...[
                 _buildDebugRow('Порт', rtuService.portName),
                 _buildDebugRow('Скорость', '${rtuService.baudRate} bps'),
                 _buildDebugRow('Slave ID', rtuService.slaveId.toString()),

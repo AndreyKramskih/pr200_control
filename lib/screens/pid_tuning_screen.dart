@@ -7,6 +7,7 @@ import '../services/modbus_manager.dart';
 import '../services/modbus_service.dart';
 import '../services/modbus_rtu_service.dart';
 import '../services/logger_service.dart';
+import '../services/owen_cloud_service.dart';
 
 /// Экран автоматической настройки ПИД-регулятора по кривой разгона
 class PidTuningScreen extends StatefulWidget {
@@ -629,47 +630,56 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
     try {
       final config = Provider.of<ConfigModel>(context, listen: false);
       final modbus = Provider.of<ModbusService>(context, listen: false);
-      final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
+      final rtu = Provider.of<ModbusRtuService>(context, listen: false);
+      final cloud = Provider.of<OwenCloudService>(context, listen: false);
 
-      if (modbus.connected) {
-        modbus.disconnect();
-      }
-      if (rtuService.connected) {
-        await rtuService.disconnect();
-      }
+      if (modbus.connected) modbus.disconnect();
+      if (rtu.connected) await rtu.disconnect();
+      if (cloud.connected) await cloud.disconnect();
 
       await Future.delayed(const Duration(milliseconds: 500));
-
       if (!mounted) return false;
 
+      if (config.connectionType == 'cloud' && config.cloudConfig != null) {
+        final ok = await cloud.connect(
+          login: config.cloudConfig!.login,
+          password: config.cloudConfig!.password,
+          deviceId: config.cloudConfig!.deviceId,
+          writeGroupId: config.cloudConfig!.writeGroupId,
+          cachedParamIds: config.cloudConfig!.paramIdCache,
+        );
+        if (ok) {
+          await cloud.refreshParamIds();
+          LoggerService().log('✅ Owen Cloud переподключён');
+          return true;
+        }
+        return false;
+      }
+
       if (config.connectionType == 'rtu' && config.rtuConfig != null) {
-        final success = await rtuService.connect(
+        final ok = await rtu.connect(
           port: config.rtuConfig!.port,
           slaveId: config.modbusServer.slaveId,
           timeout: config.modbusServer.timeout,
           baudRate: config.rtuConfig!.baudRate,
         );
-        if (success) {
+        if (ok) {
           LoggerService().log('✅ RTU переподключен');
           return true;
         }
-      } else {
-        final success = await modbus.connect(
-          config.modbusServer.ip,
-          port: config.modbusServer.port,
-          slaveId: config.modbusServer.slaveId,
-          timeout: config.modbusServer.timeout,
-        );
-        if (success) {
-          LoggerService().log('✅ TCP переподключен');
-          return true;
-        }
+        return false;
       }
 
-      LoggerService().log(
-        '❌ Не удалось переподключиться',
-        level: LogLevel.error,
+      final ok = await modbus.connect(
+        config.modbusServer.ip,
+        port: config.modbusServer.port,
+        slaveId: config.modbusServer.slaveId,
+        timeout: config.modbusServer.timeout,
       );
+      if (ok) {
+        LoggerService().log('✅ TCP переподключен');
+        return true;
+      }
       return false;
     } catch (e) {
       LoggerService().log(
@@ -679,7 +689,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
       return false;
     }
   }
-
   // ═══════════════════════════════════════════════════════════════
   // ОБРАБОТКА ТОЧКИ ДАННЫХ
   // ═══════════════════════════════════════════════════════════════
