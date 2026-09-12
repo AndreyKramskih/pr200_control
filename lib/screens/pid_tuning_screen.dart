@@ -633,6 +633,7 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
       final rtu = Provider.of<ModbusRtuService>(context, listen: false);
       final cloud = Provider.of<OwenCloudService>(context, listen: false);
 
+      // ✅ Гасим ВСЕ каналы, чтобы не было рассинхронизации
       if (modbus.connected) modbus.disconnect();
       if (rtu.connected) await rtu.disconnect();
       if (cloud.connected) await cloud.disconnect();
@@ -640,46 +641,58 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
       await Future.delayed(const Duration(milliseconds: 500));
       if (!mounted) return false;
 
-      if (config.connectionType == 'cloud' && config.cloudConfig != null) {
-        final ok = await cloud.connect(
-          login: config.cloudConfig!.login,
-          password: config.cloudConfig!.password,
-          deviceId: config.cloudConfig!.deviceId,
-          writeGroupId: config.cloudConfig!.writeGroupId,
-          cachedParamIds: config.cloudConfig!.paramIdCache,
-        );
-        if (ok) {
-          await cloud.refreshParamIds();
-          LoggerService().log('✅ Owen Cloud переподключён');
-          return true;
-        }
-        return false;
+      // ✅ Восстанавливаем ИМЕННО тот канал, который выбран в конфиге
+      switch (config.connectionType) {
+        case 'cloud':
+          if (config.cloudConfig != null) {
+            final ok = await cloud.connect(
+              login: config.cloudConfig!.login,
+              password: config.cloudConfig!.password,
+              deviceId: config.cloudConfig!.deviceId,
+              cachedParamIds: config.cloudConfig!.paramIdCache,
+            );
+            if (ok) {
+              await cloud.refreshParamIds();
+              LoggerService().log('✅ Owen Cloud переподключён');
+              return true;
+            }
+          }
+          break;
+
+        case 'rtu':
+          if (config.rtuConfig != null) {
+            final ok = await rtu.connect(
+              port: config.rtuConfig!.port,
+              slaveId: config.modbusServer.slaveId,
+              timeout: config.modbusServer.timeout,
+              baudRate: config.rtuConfig!.baudRate,
+            );
+            if (ok) {
+              LoggerService().log('✅ RTU переподключён');
+              return true;
+            }
+          }
+          break;
+
+        case 'tcp':
+        default:
+          final ok = await modbus.connect(
+            config.modbusServer.ip,
+            port: config.modbusServer.port,
+            slaveId: config.modbusServer.slaveId,
+            timeout: config.modbusServer.timeout,
+          );
+          if (ok) {
+            LoggerService().log('✅ TCP переподключён');
+            return true;
+          }
+          break;
       }
 
-      if (config.connectionType == 'rtu' && config.rtuConfig != null) {
-        final ok = await rtu.connect(
-          port: config.rtuConfig!.port,
-          slaveId: config.modbusServer.slaveId,
-          timeout: config.modbusServer.timeout,
-          baudRate: config.rtuConfig!.baudRate,
-        );
-        if (ok) {
-          LoggerService().log('✅ RTU переподключен');
-          return true;
-        }
-        return false;
-      }
-
-      final ok = await modbus.connect(
-        config.modbusServer.ip,
-        port: config.modbusServer.port,
-        slaveId: config.modbusServer.slaveId,
-        timeout: config.modbusServer.timeout,
+      LoggerService().log(
+        '❌ Не удалось переподключиться',
+        level: LogLevel.error,
       );
-      if (ok) {
-        LoggerService().log('✅ TCP переподключен');
-        return true;
-      }
       return false;
     } catch (e) {
       LoggerService().log(

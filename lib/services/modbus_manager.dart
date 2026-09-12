@@ -7,6 +7,7 @@ import 'modbus_service.dart';
 import 'modbus_rtu_service.dart';
 import 'logger_service.dart';
 import 'owen_cloud_service.dart';
+import 'connection_status.dart';
 
 /// Менеджер для работы с Modbus (автоматически выбирает TCP или RTU)
 class ModbusManager {
@@ -29,20 +30,26 @@ class ModbusManager {
     final rtu = Provider.of<ModbusRtuService>(context, listen: false);
     final cloud = Provider.of<OwenCloudService>(context, listen: false);
 
-    // Приоритет: если тип 'cloud' и сервис подключён — используем его
-    if (config.connectionType == 'cloud' && cloud.connected) return cloud;
-    if (rtu.connected) return rtu;
-    return modbus;
+    switch (config.connectionType) {
+      case 'cloud':
+        return cloud;
+      case 'rtu':
+        return rtu;
+      case 'tcp':
+      default:
+        return modbus;
+    }
   }
 
   bool get connected {
-    final config = Provider.of<ConfigModel>(context, listen: false);
-    final modbus = Provider.of<ModbusService>(context, listen: false);
-    final rtu = Provider.of<ModbusRtuService>(context, listen: false);
-    final cloud = Provider.of<OwenCloudService>(context, listen: false);
-
-    if (config.connectionType == 'cloud') return cloud.connected;
-    return modbus.connected || rtu.connected;
+    switch (activeChannel) {
+      case ActiveChannel.cloud:
+      case ActiveChannel.rtu:
+      case ActiveChannel.tcp:
+        return true;
+      case ActiveChannel.none:
+        return false;
+    }
   }
 
   // ✅ Обновляем геттер lastError
@@ -70,6 +77,20 @@ class ModbusManager {
     if (config.connectionType == 'cloud') return cloud.registerCache;
     if (rtu.connected && rtu.registerCache.isNotEmpty) return rtu.registerCache;
     return modbus.registerCache;
+  }
+
+  /// Единый активный канал. Согласован с config.connectionType и фактическим состоянием сервисов.
+  /// Активный канал определяется ТОЛЬКО по факту подключения сервисов.
+  /// Приоритет: Cloud → RTU → TCP (одновременно активен может быть только один).
+  ActiveChannel get activeChannel {
+    final modbus = Provider.of<ModbusService>(context, listen: false);
+    final rtu = Provider.of<ModbusRtuService>(context, listen: false);
+    final cloud = Provider.of<OwenCloudService>(context, listen: false);
+
+    if (cloud.connected) return ActiveChannel.cloud;
+    if (rtu.connected) return ActiveChannel.rtu;
+    if (modbus.connected) return ActiveChannel.tcp;
+    return ActiveChannel.none;
   }
 
   // ==================== КЕШИРОВАНИЕ ====================

@@ -10,8 +10,9 @@ import '../services/modbus_rtu_service.dart';
 import '../services/config_service.dart';
 import '../services/logger_service.dart';
 import '../services/config_manager.dart';
+import '../services/owen_cloud_service.dart';
 import 'cloud_connection_screen.dart';
-// import '../services/owen_cloud_service.dart';
+import '../services/connection_status.dart';
 
 class ConnectionScreen extends StatefulWidget {
   const ConnectionScreen({super.key});
@@ -279,6 +280,21 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
   Future<void> _connect(BuildContext context) async {
     final modbus = Provider.of<ModbusService>(context, listen: false);
     final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
+    final cloudService = Provider.of<OwenCloudService>(context, listen: false);
+
+    // ✅ ГАСИМ все каналы, кроме того, к которому сейчас подключаемся
+    if (_connectionType != 'tcp' && modbus.connected) {
+      LoggerService().log('🔄 Отключаем TCP перед сменой канала');
+      modbus.disconnect();
+    }
+    if (_connectionType != 'rtu' && rtuService.connected) {
+      LoggerService().log('🔄 Отключаем RTU перед сменой канала');
+      await rtuService.disconnect();
+    }
+    if (_connectionType != 'cloud' && cloudService.connected) {
+      LoggerService().log('🔄 Отключаем Cloud перед сменой канала');
+      await cloudService.disconnect();
+    }
 
     if (_connectionType == 'tcp') {
       final ip = _ipController.text.trim();
@@ -299,12 +315,6 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
         _statusColor = Colors.orange;
         _isConnecting = true;
       });
-
-      // ✅ Если RTU подключен — отключаем его
-      if (rtuService.connected) {
-        LoggerService().log('🔄 Отключаем RTU перед подключением TCP');
-        await rtuService.disconnect();
-      }
 
       final success = await modbus.connect(
         ip,
@@ -358,12 +368,6 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
         _statusColor = Colors.orange;
         _isConnecting = true;
       });
-
-      // ✅ Если TCP подключен — отключаем его
-      if (modbus.connected) {
-        LoggerService().log('🔄 Отключаем TCP перед подключением RTU');
-        modbus.disconnect();
-      }
 
       final success = await rtuService.connect(
         port: devicePath,
@@ -590,10 +594,6 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                   ),
               ],
             ),
-            if (_connectionType == 'rtu') ...[
-              const Divider(),
-              _buildRtuControls(),
-            ],
           ],
         ),
       ),
@@ -782,12 +782,22 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
   Widget build(BuildContext context) {
     final modbus = Provider.of<ModbusService>(context);
     final rtuService = Provider.of<ModbusRtuService>(context);
+    final cloudService = Provider.of<OwenCloudService>(context);
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final isConnected = _connectionType == 'tcp'
-        ? modbus.connected
-        : rtuService.connected;
+    // ✅ watch, чтобы экран обновлялся при подключении/отключении
+    final modbusW = context.watch<ModbusService>();
+    final rtuW = context.watch<ModbusRtuService>();
+    final cloudW = context.watch<OwenCloudService>();
+    final activeChannel = cloudW.connected
+        ? ActiveChannel.cloud
+        : rtuW.connected
+        ? ActiveChannel.rtu
+        : modbusW.connected
+        ? ActiveChannel.tcp
+        : ActiveChannel.none;
+    final isConnected = activeChannel != ActiveChannel.none;
 
     return Scaffold(
       appBar: AppBar(
@@ -835,9 +845,13 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                   ],
                 ),
                 child: Icon(
-                  _connectionType == 'tcp'
-                      ? Icons.settings_ethernet
-                      : Icons.usb,
+                  activeChannel != ActiveChannel.none
+                      ? activeChannel.icon
+                      : (_connectionType == 'tcp'
+                            ? Icons.settings_ethernet
+                            : _connectionType == 'rtu'
+                            ? Icons.usb
+                            : Icons.cloud),
                   size: 48,
                   color: Colors.white,
                 ),
@@ -848,7 +862,9 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
               Text(
                 _connectionType == 'tcp'
                     ? 'Настройки Modbus TCP'
-                    : 'Настройки Modbus RTU (USB)',
+                    : _connectionType == 'rtu'
+                    ? 'Настройки Modbus RTU (USB)'
+                    : 'Настройки Owen Cloud',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -859,7 +875,9 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
               Text(
                 _connectionType == 'tcp'
                     ? 'Введите параметры подключения к устройству'
-                    : 'Подключите USB-кабель к устройству',
+                    : _connectionType == 'rtu'
+                    ? 'Подключите USB-кабель к устройству'
+                    : 'Настройте подключение через Owen Cloud',
                 style: TextStyle(
                   fontSize: 14,
                   color: isDark ? Colors.grey[400] : Colors.black54,
@@ -1088,9 +1106,13 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                     if (isConnected) ...[
                       const SizedBox(width: 16),
                       Text(
-                        _connectionType == 'tcp'
+                        activeChannel == ActiveChannel.tcp
                             ? '${modbus.ip}:${modbus.port}'
-                            : rtuService.portName,
+                            : activeChannel == ActiveChannel.rtu
+                            ? rtuService.portName
+                            : activeChannel == ActiveChannel.cloud
+                            ? 'ID ${cloudService.deviceId ?? "?"}'
+                            : '',
                         style: TextStyle(
                           fontSize: 12,
                           color: isDark ? Colors.grey[400] : Colors.grey,

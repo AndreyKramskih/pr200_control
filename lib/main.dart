@@ -92,13 +92,12 @@ class MyAppState extends State<MyApp> {
     super.initState();
     _modbusService = ModbusService();
     _modbusRtuService = ModbusRtuService();
-    // ✅ Используем postFrameCallback для гарантии порядка
+    _cloudService = OwenCloudService();
+
+    // Один вызов последовательной инициализации
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initLoggerThenLoad();
     });
-    _checkPinAndLoad();
-    _initLogger();
-    _cloudService = OwenCloudService();
   }
 
   Future<void> _initLoggerThenLoad() async {
@@ -195,6 +194,14 @@ class MyAppState extends State<MyApp> {
 
   Future<void> _autoConnect() async {
     if (_config == null) return;
+
+    // ✅ Защита от повторного подключения
+    if (_modbusService.connected ||
+        _modbusRtuService.connected ||
+        _cloudService.connected) {
+      LoggerService().log('ℹ️ Уже подключено, пропускаем автоподключение');
+      return;
+    }
 
     final config = _config!;
 

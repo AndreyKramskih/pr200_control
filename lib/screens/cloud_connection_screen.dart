@@ -7,6 +7,8 @@ import '../services/owen_cloud_service.dart';
 import '../services/config_service.dart';
 import '../services/config_manager.dart';
 import '../services/logger_service.dart';
+import '../services/modbus_rtu_service.dart';
+import '../services/modbus_service.dart';
 
 class CloudConnectionScreen extends StatefulWidget {
   const CloudConnectionScreen({super.key});
@@ -97,6 +99,20 @@ class _CloudConnectionScreenState extends State<CloudConnectionScreen> {
 
   // ===== Шаг 2. Полное подключение с выбранным устройством =====
   Future<void> _connect() async {
+    final modbus = Provider.of<ModbusService>(context, listen: false);
+    final rtu = Provider.of<ModbusRtuService>(context, listen: false);
+
+    // ✅ Гасим только ЛОКАЛЬНЫЕ каналы (TCP/RTU),
+    //    Cloud НЕ отключаем — мы как раз к нему подключаемся
+    if (modbus.connected) {
+      LoggerService().log('🔄 Отключаем TCP перед подключением к Cloud');
+      modbus.disconnect();
+    }
+    if (rtu.connected) {
+      LoggerService().log('🔄 Отключаем RTU перед подключением к Cloud');
+      await rtu.disconnect();
+    }
+
     final login = _loginCtrl.text.trim();
     final pass = _passCtrl.text;
     final deviceId = int.tryParse(_deviceIdCtrl.text);
@@ -177,10 +193,8 @@ class _CloudConnectionScreenState extends State<CloudConnectionScreen> {
       tokenExpiry: DateTime.now().add(const Duration(minutes: 20)),
       deviceId: deviceId,
       deviceName: _selectedDevice?['name']?.toString(),
-      writeGroupId: config.cloudConfig?.writeGroupId ?? 0,
       paramIdCache: service.paramIdCache,
     );
-
     try {
       final configService = ConfigService();
       await configService.saveConfig(config);

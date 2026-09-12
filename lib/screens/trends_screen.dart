@@ -3,11 +3,11 @@ import 'package:provider/provider.dart';
 import 'dart:async';
 import '../models/config_model.dart';
 import '../services/modbus_manager.dart';
-import '../services/modbus_service.dart';
-import '../services/modbus_rtu_service.dart';
 import '../models/trend_data.dart';
 import '../services/logger_service.dart';
 import '../services/owen_cloud_service.dart';
+import '../services/modbus_service.dart';
+import '../services/modbus_rtu_service.dart';
 
 class TrendsScreen extends StatefulWidget {
   const TrendsScreen({super.key});
@@ -20,14 +20,11 @@ class _TrendsScreenState extends State<TrendsScreen> {
   List<TrendSeries> _series = [];
   Timer? _timer;
   bool _isCollecting = false;
-  bool _connected = false;
-  String _connectionType = 'none'; // 'tcp', 'rtu', 'none'
 
   @override
   void initState() {
     super.initState();
     _loadSensors();
-    _checkConnection();
   }
 
   @override
@@ -38,36 +35,13 @@ class _TrendsScreenState extends State<TrendsScreen> {
 
   // ✅ Определяем тип подключения по активным сервисам
   String _getConnectionType() {
-    try {
-      final config = Provider.of<ConfigModel>(context, listen: false);
-      if (config.connectionType == 'cloud') {
-        final cloud = Provider.of<OwenCloudService>(context, listen: false);
-        return cloud.connected ? 'cloud' : 'none';
-      }
-    } catch (_) {}
-
-    try {
-      final rtu = Provider.of<ModbusRtuService>(context, listen: false);
-      if (rtu.connected) return 'rtu';
-    } catch (_) {}
-
-    try {
-      final modbus = Provider.of<ModbusService>(context, listen: false);
-      if (modbus.connected) return 'tcp';
-    } catch (_) {}
-
+    final m = context.watch<OwenCloudService>();
+    final r = context.watch<ModbusRtuService>();
+    final t = context.watch<ModbusService>();
+    if (m.connected) return 'cloud';
+    if (r.connected) return 'rtu';
+    if (t.connected) return 'tcp';
     return 'none';
-  }
-
-  void _checkConnection() {
-    // ✅ Проверка перед setState
-    if (!mounted) return;
-
-    final modbusManager = ModbusManager(context);
-    setState(() {
-      _connected = modbusManager.connected;
-      _connectionType = _getConnectionType();
-    });
   }
 
   void _loadSensors() {
@@ -190,8 +164,6 @@ class _TrendsScreenState extends State<TrendsScreen> {
       if (mounted) {
         setState(() {
           _isCollecting = false;
-          _connected = false;
-          _connectionType = 'none';
         });
       }
       LoggerService().log(
@@ -317,22 +289,8 @@ class _TrendsScreenState extends State<TrendsScreen> {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final activeCount = _series.where((s) => s.isActive).length;
-
-    // ✅ Периодически проверяем подключение и тип
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      // ✅ Проверка перед setState
-      if (!mounted) return;
-
-      final modbusManager = ModbusManager(context);
-      final connectionType = _getConnectionType();
-      if (_connected != modbusManager.connected ||
-          _connectionType != connectionType) {
-        setState(() {
-          _connected = modbusManager.connected;
-          _connectionType = connectionType;
-        });
-      }
-    });
+    final connectionType = _getConnectionType();
+    final connected = connectionType != 'none';
 
     return Scaffold(
       appBar: AppBar(
@@ -390,37 +348,37 @@ class _TrendsScreenState extends State<TrendsScreen> {
           // ✅ Статус подключения с определением типа
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: _connected ? Colors.green[50] : Colors.red[50],
+            color: connected ? Colors.green[50] : Colors.red[50],
             child: Row(
               children: [
                 // ✅ Иконка в зависимости от типа подключения
                 Icon(
-                  _connected
-                      ? (_connectionType == 'cloud'
+                  connected
+                      ? (connectionType == 'cloud'
                             ? Icons.cloud
-                            : (_connectionType == 'rtu'
+                            : (connectionType == 'rtu'
                                   ? Icons.usb
                                   : Icons.wifi))
                       : Icons.wifi_off,
-                  color: _connected ? Colors.green : Colors.red,
+                  color: connected ? Colors.green : Colors.red,
                   size: 16,
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  _connected
-                      ? (_connectionType == 'cloud'
+                  connected
+                      ? (connectionType == 'cloud'
                             ? 'Owen Cloud'
-                            : (_connectionType == 'rtu'
+                            : (connectionType == 'rtu'
                                   ? 'RTU (USB)'
                                   : 'TCP/IP'))
                       : 'Нет подключения',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
-                    color: _connected ? Colors.green : Colors.red,
+                    color: connected ? Colors.green : Colors.red,
                   ),
                 ),
-                if (_connected) ...[
+                if (connected) ...[
                   const SizedBox(width: 8),
                   Container(
                     width: 6,
@@ -432,7 +390,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                   ),
                   const SizedBox(width: 4),
                   Text(
-                    _connectionType == 'rtu' ? 'USB' : 'WiFi',
+                    connectionType == 'rtu' ? 'USB' : 'WiFi',
                     style: TextStyle(
                       fontSize: 10,
                       color: isDark ? Colors.grey[400] : Colors.grey[600],

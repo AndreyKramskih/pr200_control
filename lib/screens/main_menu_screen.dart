@@ -14,6 +14,8 @@ import '../services/pin_service.dart';
 import '../screens/pin_screen.dart';
 import '../screens/config_list_screen.dart';
 import '../main.dart';
+import '../services/connection_status.dart';
+import '../services/modbus_manager.dart';
 
 class MainMenuScreen extends StatefulWidget {
   const MainMenuScreen({super.key});
@@ -23,88 +25,23 @@ class MainMenuScreen extends StatefulWidget {
 }
 
 class _MainMenuScreenState extends State<MainMenuScreen> {
-  String _statusText = 'Не подключено';
-  Color _statusColor = Colors.red;
-  String _connectionInfo = '';
-  ModbusService? _modbus;
-  ModbusRtuService? _rtu;
-  OwenCloudService? _cloud;
-
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _modbus?.addListener(_onConnectionChanged);
-      _rtu?.addListener(_onConnectionChanged);
-      _cloud?.addListener(_onConnectionChanged);
-      _checkConnection();
-    });
+    // Слушатели и первый вызов _checkConnection — в didChangeDependencies
   }
 
   @override
   void dispose() {
-    _modbus?.removeListener(_onConnectionChanged);
-    _rtu?.removeListener(_onConnectionChanged);
-    _cloud?.removeListener(_onConnectionChanged);
     super.dispose();
-  }
-
-  void _onConnectionChanged() {
-    _checkConnection();
-  }
-
-  void _checkConnection() {
-    final config = Provider.of<ConfigModel>(context, listen: false);
-    final modbus = Provider.of<ModbusService>(context, listen: false);
-    final rtu = Provider.of<ModbusRtuService>(context, listen: false);
-    final cloud = Provider.of<OwenCloudService>(context, listen: false);
-
-    setState(() {
-      if (config.connectionType == 'cloud') {
-        if (cloud.connected) {
-          _statusText = 'Подключено (Cloud)';
-          _statusColor = Colors.green;
-          _connectionInfo = 'ID ${cloud.deviceId ?? "?"}';
-        } else {
-          _statusText = 'Не подключено (Cloud)';
-          _statusColor = Colors.red;
-          _connectionInfo = '';
-        }
-      } else if (rtu.connected) {
-        _statusText = 'Подключено (USB)';
-        _statusColor = Colors.green;
-        _connectionInfo = rtu.portName;
-      } else if (modbus.connected) {
-        _statusText = 'Подключено (WiFi)';
-        _statusColor = Colors.green;
-        _connectionInfo = '${modbus.ip}:${modbus.port}';
-      } else {
-        _statusText = 'Не подключено';
-        _statusColor = Colors.red;
-        _connectionInfo = '';
-      }
-    });
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _modbus ??= Provider.of<ModbusService>(context, listen: false);
-    _rtu ??= Provider.of<ModbusRtuService>(context, listen: false);
-    _cloud ??= Provider.of<OwenCloudService>(context, listen: false);
   }
 
   Future<void> _createReport(BuildContext context) async {
     try {
       final config = Provider.of<ConfigModel>(context, listen: false);
-      final modbus = Provider.of<ModbusService>(context, listen: false);
-      final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
+      final modbusManager = ModbusManager(context);
 
-      // ✅ Проверяем подключение - RTU или TCP
-      final bool isConnected = rtuService.connected || modbus.connected;
-
-      if (!isConnected) {
+      if (!modbusManager.connected) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('❌ Нет подключения к устройству'),
@@ -156,11 +93,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               try {
                 dynamic value;
                 // ✅ Используем активный сервис
-                if (rtuService.connected) {
-                  value = await rtuService.readParameterValue(item);
-                } else {
-                  value = await modbus.readParameterValue(item);
-                }
+                value = await modbusManager.readParameterValue(item);
                 data[item.name] = {
                   'value': value ?? '--',
                   'unit': item.unit ?? '',
@@ -185,11 +118,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               for (var item in group.items) {
                 try {
                   dynamic value;
-                  if (rtuService.connected) {
-                    value = await rtuService.readParameterValue(item);
-                  } else {
-                    value = await modbus.readParameterValue(item);
-                  }
+                  value = await modbusManager.readParameterValue(item);
                   data[item.name] = {
                     'value': value ?? '--',
                     'unit': item.unit ?? '',
@@ -256,18 +185,43 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   @override
   Widget build(BuildContext context) {
     final config = Provider.of<ConfigModel>(context);
-    final modbus = Provider.of<ModbusService>(context);
-    final rtuService = Provider.of<ModbusRtuService>(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
 
-    // ✅ Определяем подключение по состоянию сервисов
-    final cloud = Provider.of<OwenCloudService>(context);
-    final bool isCloud = config.connectionType == 'cloud';
-    final bool isRtu = rtuService.connected;
-    final bool isConnected = isCloud
-        ? cloud.connected
-        : (rtuService.connected || modbus.connected);
+    // ✅ watch — автоматически перерисовывает экран при любом изменении сервисов
+    final modbus = context.watch<ModbusService>();
+    final rtuService = context.watch<ModbusRtuService>();
+    final cloudService = context.watch<OwenCloudService>();
 
+    // Статус вычисляется напрямую, каждый билд
+    final bool isCloud = cloudService.connected;
+    final bool isRtu = !isCloud && rtuService.connected;
+    final bool isTcp = !isCloud && !isRtu && modbus.connected;
+    final bool isConnected = isCloud || isRtu || isTcp;
+
+    final ActiveChannel channel = isCloud
+        ? ActiveChannel.cloud
+        : isRtu
+        ? ActiveChannel.rtu
+        : isTcp
+        ? ActiveChannel.tcp
+        : ActiveChannel.none;
+
+    // Текст и иконка статуса
+    final String statusText = isCloud
+        ? 'Подключено (Cloud)'
+        : isRtu
+        ? 'Подключено (USB)'
+        : isTcp
+        ? 'Подключено (WiFi)'
+        : 'Не подключено';
+    final Color statusColor = isConnected ? Colors.green : Colors.red;
+    final String connectionInfo = isCloud
+        ? 'ID ${config.cloudConfig?.deviceId ?? "?"}'
+        : isRtu
+        ? rtuService.portName
+        : isTcp
+        ? '${modbus.ip}:${modbus.port}'
+        : '';
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
@@ -399,7 +353,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
         ),
         child: Column(
           children: [
-            // Статус
             Container(
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
               color: themeProvider.isDarkMode
@@ -411,30 +364,33 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                   Expanded(
                     child: Row(
                       children: [
+                        // Иконка канала — только ОДНА
+                        Icon(channel.icon, color: channel.color, size: 18),
+                        const SizedBox(width: 8),
                         Container(
                           width: 10,
                           height: 10,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: _statusColor,
+                            color: statusColor,
                           ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            _statusText,
+                            statusText,
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: _statusColor,
+                              color: statusColor,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        if (_connectionInfo.isNotEmpty) ...[
+                        if (connectionInfo.isNotEmpty) ...[
                           const SizedBox(width: 4),
                           Flexible(
                             child: Text(
-                              '($_connectionInfo)',
+                              '($connectionInfo)',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: themeProvider.isDarkMode
@@ -454,22 +410,19 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                       if (!isConnected)
                         Tooltip(
                           message: isCloud
-                              ? cloud.lastError
-                              : (isRtu
-                                    ? rtuService.lastError
-                                    : modbus.lastError),
+                              ? cloudService.lastError
+                              : isRtu
+                              ? rtuService.lastError
+                              : modbus.lastError,
                           child: const Icon(
                             Icons.error_outline,
                             color: Colors.orange,
                             size: 20,
                           ),
                         ),
-                      const SizedBox(width: 8),
                       IconButton(
                         icon: const Icon(Icons.bug_report, size: 20),
-                        onPressed: () {
-                          _showDebugInfo(context);
-                        },
+                        onPressed: () => _showDebugInfo(context),
                         tooltip: 'Отладка',
                       ),
                     ],
@@ -574,8 +527,12 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                         ),
                       ),
                       subtitle: Text(
-                        isConnected
-                            ? (isRtu ? 'Подключено по USB' : 'Подключено')
+                        isCloud
+                            ? 'Подключено через Owen Cloud'
+                            : isRtu
+                            ? 'Подключено по USB'
+                            : isTcp
+                            ? 'Подключено по TCP'
                             : 'Требуется подключение',
                         style: TextStyle(
                           fontSize: 12,
@@ -791,11 +748,12 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   void _showDebugInfo(BuildContext context) {
     final modbus = Provider.of<ModbusService>(context, listen: false);
     final rtuService = Provider.of<ModbusRtuService>(context, listen: false);
+    final cloud = Provider.of<OwenCloudService>(context, listen: false);
     final config = Provider.of<ConfigModel>(context, listen: false);
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
-    final bool isRtu = rtuService.connected;
-    final isCloud = config.connectionType == 'cloud';
-    final cloud = Provider.of<OwenCloudService>(context, listen: false);
+    final channel = ModbusManager(context).activeChannel;
+    final isCloud = channel == ActiveChannel.cloud;
+    final isRtu = channel == ActiveChannel.rtu;
 
     showDialog(
       context: context,
@@ -810,7 +768,10 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildDebugRow('Тип подключения', isRtu ? 'RTU (USB)' : 'TCP/IP'),
+              _buildDebugRow(
+                'Активный канал',
+                ModbusManager(context).activeChannel.label,
+              ),
               _buildDebugRow(
                 'Статус',
                 isRtu
