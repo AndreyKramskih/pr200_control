@@ -152,6 +152,9 @@ class _CloudConnectionScreenState extends State<CloudConnectionScreen> {
       return;
     }
 
+    // ✅ ВОТ ЭТА СТРОКА — переключаем активный канал на Cloud
+    config.connectionType = 'cloud';
+
     // Обновим кэш ID параметров
     final paramIdsOk = await service.refreshParamIds();
 

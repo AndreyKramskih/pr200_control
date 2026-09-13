@@ -27,7 +27,7 @@ class OwenCloudService extends ChangeNotifier {
   String? _token;
   DateTime? _tokenExpiry;
   int? _deviceId;
-  // int _writeGroupId = 0;
+  DateTime? _lastDataTimestamp;
   Timer? _tokenTimer;
 
   DateTime _lastRequestTime = DateTime.fromMillisecondsSinceEpoch(0);
@@ -53,6 +53,7 @@ class OwenCloudService extends ChangeNotifier {
   String? get token => _token;
   int? get deviceId => _deviceId;
   List<AlarmItem> get activeAlarms => _activeAlarms;
+  DateTime? get lastDataTimestamp => _lastDataTimestamp;
 
   // ==================== ПОДКЛЮЧЕНИЕ ====================
 
@@ -410,6 +411,12 @@ class OwenCloudService extends ChangeNotifier {
           final v = last['v'];
           if (v == null) continue;
 
+          // ✅ Запоминаем timestamp последнего полученного значения
+          final d = last['d'];
+          if (d is int) {
+            _lastDataTimestamp = DateTime.fromMillisecondsSinceEpoch(d * 1000);
+          }
+
           result[addr] = v;
           _putCache(addr, v);
         }
@@ -655,4 +662,10 @@ class _CachedValue {
   final dynamic value;
   final DateTime ts;
   _CachedValue(this.value, this.ts);
+}
+
+class DeviceStatus {
+  final bool isOnline;
+  final DateTime? lastSeen;
+  const DeviceStatus({required this.isOnline, this.lastSeen});
 }

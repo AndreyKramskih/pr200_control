@@ -6,7 +6,6 @@ import '../models/config_model.dart';
 import '../models/modbus_data.dart';
 import '../services/modbus_manager.dart';
 import '../services/logger_service.dart';
-//import '../services/modbus_rtu_service.dart';
 import '../widgets/sensors_list_widget.dart';
 import '../widgets/relays_list_widget.dart';
 import '../widgets/pumps_list_widget.dart';
@@ -14,6 +13,8 @@ import '../widgets/alarms_widget.dart';
 import '../widgets/valve_widget.dart';
 import '../widgets/start_stop_widget.dart';
 import '../widgets/settings_widget.dart';
+import '../widgets/device_status_banner.dart';
+// import '../widgets/device_status_banner.dart';
 
 class SubmenuScreen extends StatefulWidget {
   final String systemId;
@@ -88,10 +89,31 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   @override
   void dispose() {
     _updateTimer?.cancel();
+    _updateTimer = null;
     super.dispose();
   }
 
+  @override
+  void deactivate() {
+    // Виджет временно убран из дерева (анимация перехода).
+    // Останавливаем таймер, чтобы он не дёргал Provider на deactivated context.
+    _updateTimer?.cancel();
+    _updateTimer = null;
+    super.deactivate();
+  }
+
+  @override
+  void activate() {
+    super.activate();
+    // Виджет снова в дереве (переход завершён или возврат назад).
+    // Перезапускаем автообновление, если это realtime-подменю.
+    if (_isRealtimeType) {
+      _startAutoUpdate();
+    }
+  }
+
   // ==================== УНИВЕРСАЛЬНЫЙ МЕТОД ДЛЯ ЗАПИСИ ====================
+
   Future<void> _performWrite(Future<void> Function() writeOperation) async {
     _updateTimer?.cancel();
     try {
@@ -844,34 +866,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
     final resetAddress = submenu.resetAddress!;
     final resetBit = submenu.resetBit ?? 3;
 
-    // Поиск битов Start/Stop и Mode
-    // int? startStopBit;
-    // int? modeBit;
-
-    // for (final entry in system.submenus.entries) {
-    //   if (entry.value.type == 'startstop' && entry.value.items != null) {
-    //     for (final item in entry.value.items!) {
-    //       if (item.bit != null) {
-    //         startStopBit = item.bit!;
-    //         break;
-    //       }
-    //     }
-    //   }
-    //   if (startStopBit != null) break;
-    // }
-
-    // for (final entry in system.submenus.entries) {
-    //   if (entry.value.type == 'valve' && entry.value.items != null) {
-    //     for (final item in entry.value.items!) {
-    //       if (item.name.contains('Режим работы') && item.bit != null) {
-    //         modeBit = item.bit!;
-    //         break;
-    //       }
-    //     }
-    //   }
-    //   if (modeBit != null) break;
-    // }
-
     final startStopBit = system.findFirstBitBySubmenuType('startstop');
     final modeBit = system.findModeBitInValve();
 
@@ -992,25 +986,41 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       final system = config.getSystem(widget.systemId);
       if (system == null) return;
       final submenu = system.submenus[widget.submenuId];
-      if (submenu == null || submenu.items == null || submenu.items!.isEmpty)
+      if (submenu == null || submenu.items == null || submenu.items!.isEmpty) {
         return;
+      }
       final item = submenu.items!.first;
       final modbusManager = ModbusManager(context);
+      final bit = item.bit ?? 0;
+      final key = item.address.toString();
 
-      // 🎯 Вся логика теперь внутри менеджера!
-      final success = await modbusManager.toggleBit(
-        item.address,
-        item.bit ?? 0,
-      );
+      // Запоминаем текущее и вычисляем новое значение
+      final currentValue = _realtimeData[key];
+      final currentVal = currentValue is int ? currentValue : 0;
+      final willBeOn = (currentVal & (1 << bit)) == 0;
+      final newValue = willBeOn
+          ? (currentVal | (1 << bit))
+          : (currentVal & ~(1 << bit));
 
-      if (success) {
-        final currentValue = _realtimeData[item.address.toString()] ?? 0;
-        final isOn = (currentValue & (1 << (item.bit ?? 0))) != 0;
-        _showSuccess(isOn ? 'Выключено' : 'Включено');
-        await _loadRealtimeData(submenu);
-      } else {
+      final success = await modbusManager.toggleBit(item.address, bit);
+
+      if (!success) {
         _showError('Ошибка: ${modbusManager.lastError}');
+        return;
       }
+
+      // ✅ Сразу меняем UI локально
+      if (mounted) {
+        setState(() {
+          _realtimeData[key] = newValue;
+        });
+      }
+      _showSuccess(willBeOn ? 'Включено' : 'Выключено');
+
+      // ✅ Через 5 секунд — одно подтверждающее чтение из облака
+      await Future.delayed(const Duration(seconds: 5));
+      if (!mounted) return;
+      await _loadRealtimeData(submenu);
     });
   }
 
@@ -1175,22 +1185,30 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
             ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _manualRefresh,
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: Theme.of(context).brightness == Brightness.dark
-                  ? [Colors.grey[900]!, Colors.grey[800]!]
-                  : [Colors.grey[50]!, Colors.grey[200]!],
+      body: Column(
+        children: [
+          const DeviceStatusBanner(),
+
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _manualRefresh,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: Theme.of(context).brightness == Brightness.dark
+                        ? [Colors.grey[900]!, Colors.grey[800]!]
+                        : [Colors.grey[50]!, Colors.grey[200]!],
+                  ),
+                ),
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _buildContent(submenu),
+              ),
             ),
           ),
-          child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _buildContent(submenu),
-        ),
+        ],
       ),
     );
   }
