@@ -16,6 +16,7 @@ import '../screens/config_list_screen.dart';
 import '../main.dart';
 import '../services/connection_status.dart';
 import '../services/modbus_manager.dart';
+import '../screens/history_screen.dart';
 
 class MainMenuScreen extends StatefulWidget {
   const MainMenuScreen({super.key});
@@ -730,6 +731,55 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                                 context,
                                 MaterialPageRoute(
                                   builder: (context) => const TrendsScreen(),
+                                ),
+                              );
+                            }
+                          : null,
+                    ),
+                  ),
+                  Card(
+                    elevation: 4,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      leading: const Text('📜', style: TextStyle(fontSize: 32)),
+                      title: Text(
+                        'История',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: themeProvider.isDarkMode
+                              ? Colors.white
+                              : Colors.black87,
+                        ),
+                      ),
+                      subtitle: Text(
+                        isCloud
+                            ? 'Таблица из Owen Cloud'
+                            : 'Доступно только в Owen Cloud',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isCloud ? Colors.green : Colors.orange,
+                        ),
+                      ),
+                      trailing: Icon(
+                        Icons.table_chart,
+                        color: themeProvider.isDarkMode
+                            ? Colors.grey[400]
+                            : Colors.teal,
+                      ),
+                      onTap: isCloud
+                          ? () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const HistoryScreen(),
                                 ),
                               );
                             }

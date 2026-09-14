@@ -539,6 +539,119 @@ class OwenCloudService extends ChangeNotifier {
     return result;
   }
 
+  /// Результат чтения истории: address → список пар (timestamp, value)
+  Future<Map<int, List<Map<String, dynamic>>>> readHistory({
+    required List<int> addresses,
+    required DateTime from,
+    required DateTime to,
+    int step = 1,
+  }) async {
+    final result = <int, List<Map<String, dynamic>>>{};
+    if (!_connected) {
+      _lastError = 'Нет подключения';
+      return result;
+    }
+    if (!await _ensureToken()) return result;
+
+    final idToAddress = <int, int>{};
+    final ids = <int>[];
+    for (final addr in addresses) {
+      final id = _addressToId(addr);
+      if (id != null) {
+        ids.add(id);
+        idToAddress[id] = addr;
+      }
+    }
+
+    if (ids.isEmpty) {
+      _lastError = 'Нет валидных ID';
+      return result;
+    }
+
+    String fmt(DateTime d) =>
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')} '
+        '${d.hour.toString().padLeft(2, '0')}:'
+        '${d.minute.toString().padLeft(2, '0')}:'
+        '${d.second.toString().padLeft(2, '0')}';
+
+    try {
+      final response = await _postWithRetry(
+        Uri.parse('$_baseUrl/parameters/data'),
+        _authHeaders,
+        jsonEncode({
+          'ids': ids,
+          'start': fmt(from),
+          'end': fmt(to),
+          'step': step,
+        }),
+      );
+
+      // ✅ ВРЕМЕННАЯ ОТЛАДКА
+      LoggerService().log('🔍 history ids: $ids');
+      LoggerService().log(
+        '🔍 history body: ${response.body.length > 500 ? response.body.substring(0, 500) : response.body}',
+      );
+
+      if (response.statusCode != 200) {
+        _lastError = 'parameters/data: HTTP ${response.statusCode}';
+        return result;
+      }
+
+      final decoded = jsonDecode(response.body);
+
+      List<dynamic> list;
+      if (decoded is List) {
+        list = decoded;
+      } else if (decoded is Map && decoded['data'] is List) {
+        list = decoded['data'] as List;
+      } else {
+        _lastError = 'Неожиданный формат parameters/data';
+        return result;
+      }
+
+      for (final item in list) {
+        if (item is! Map) continue;
+        final id = item['id'] is int
+            ? item['id'] as int
+            : int.tryParse(item['id']?.toString() ?? '');
+        if (id == null) continue;
+
+        final addr = idToAddress[id];
+        if (addr == null) continue;
+
+        final values = item['values'];
+        if (values is! List) continue;
+
+        final points = <Map<String, dynamic>>[];
+        for (final v in values) {
+          if (v is! Map) continue;
+          final d = v['d'];
+          DateTime? ts;
+          if (d is int) {
+            ts = DateTime.fromMillisecondsSinceEpoch(d * 1000);
+          } else if (d != null) {
+            ts = DateTime.tryParse(d.toString());
+          }
+          if (ts == null) continue;
+          points.add({'timestamp': ts, 'value': v['v']?.toString() ?? ''});
+        }
+        points.sort(
+          (a, b) => (a['timestamp'] as DateTime).compareTo(
+            b['timestamp'] as DateTime,
+          ),
+        );
+        result[addr] = points;
+      }
+
+      return result;
+    } catch (e) {
+      _lastError = 'Ошибка чтения истории: $e';
+      LoggerService().log(_lastError, level: LogLevel.error);
+      return result;
+    }
+  }
+
   Future<dynamic> readParameterValue(ItemConfig param) async {
     final raw = await _readRawAddresses([param.address]);
     if (!raw.containsKey(param.address)) return null;
