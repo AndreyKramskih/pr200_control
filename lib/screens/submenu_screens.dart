@@ -739,7 +739,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
       if (mounted && _active) {
         if (allSuccess) {
-          _showSuccess('Все параметры сохранены!');
+          _showSuccess('Все параметры сохранены!${_cloudDelayHint()}');
           await _reloadSettings();
         } else {
           _showError('Ошибка сохранения: ${modbusManager.lastError}');
@@ -802,7 +802,10 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
             (currentValue != null) &&
             (currentValue & (1 << (modeItem.bit ?? 0))) != 0;
         _showSuccess(
-          isManual ? 'Режим переключен на РУЧНОЙ' : 'Режим переключен на АВТО',
+          (isManual
+                  ? 'Режим переключен на РУЧНОЙ'
+                  : 'Режим переключен на АВТО') +
+              _cloudDelayHint(),
         );
         await _loadRealtimeData(submenu);
       } else {
@@ -935,7 +938,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
         if (mounted && _active) {
           if (_alarms.isEmpty) {
-            _showSuccess('✅ Все аварии сброшены!');
+            _showSuccess('✅ Все аварии сброшены!${_cloudDelayHint()}');
           } else {
             _showWarning(
               '⚠️ Остались активные аварии: ${_alarms.map((a) => a.name).join(", ")}\n'
@@ -998,7 +1001,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
           _realtimeData[key] = newValue;
         });
       }
-      _showSuccess(willBeOn ? 'Включено' : 'Выключено');
+      _showSuccess((willBeOn ? 'Включено' : 'Выключено') + _cloudDelayHint());
 
       await Future.delayed(const Duration(seconds: 5));
       if (!mounted || !_active) return;
@@ -1033,15 +1036,15 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       if (!_active) return;
 
       if (mounted && _active) {
+        final msg = success
+            ? 'Параметр сохранён${_cloudDelayHint()}'
+            : 'Ошибка: ${modbusManager.lastError}';
+        final hasHint = msg.contains('Owen Cloud');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              success
-                  ? 'Параметр сохранён'
-                  : 'Ошибка: ${modbusManager.lastError}',
-            ),
+            content: Text(msg),
             backgroundColor: success ? Colors.green : Colors.red,
-            duration: Duration(seconds: success ? 2 : 6),
+            duration: Duration(seconds: hasHint ? 4 : (success ? 2 : 6)),
           ),
         );
       }
@@ -1075,14 +1078,27 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   }
 
   // ==================== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ ====================
+  /// Возвращает подсказку про задержку Owen Cloud, если активен облачный режим.
+  /// В режиме RTU/TCP возвращает пустую строку — сообщение не изменится.
+  String _cloudDelayHint() {
+    if (!mounted) return '';
+    try {
+      final config = Provider.of<ConfigModel>(context, listen: false);
+      if (config.connectionType == 'cloud') {
+        return '\n\n⏳ Изменения появятся в Owen Cloud через несколько секунд.';
+      }
+    } catch (_) {}
+    return '';
+  }
 
   void _showSuccess(String message) {
     if (mounted && _active) {
+      final hasHint = message.contains('Owen Cloud');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(message),
           backgroundColor: Colors.green,
-          duration: const Duration(seconds: 2),
+          duration: Duration(seconds: hasHint ? 4 : 2),
         ),
       );
     }
@@ -1262,7 +1278,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       if (!_active) return;
       if (success && mounted && _active) {
         _onModeChanged(address, newValue);
-        _showSuccess('Режим насоса изменен');
+        _showSuccess('Режим насоса изменён${_cloudDelayHint()}');
       } else if (mounted && _active) {
         _showError('Ошибка изменения режима: ${modbusManager.lastError}');
       }
