@@ -22,21 +22,22 @@ class RelaysListWidget extends StatelessWidget {
       );
     }
 
+    final items = submenu.items!;
+
     return Container(
       color: ThemeUtils.scaffoldColor(context),
-      child: ListView(
+      child: ListView.builder(
         padding: const EdgeInsets.all(16),
-        // ✅ Используем ключи для оптимизации
-        children: submenu.items!.map((item) {
+        itemCount: items.length,
+        itemBuilder: (context, index) {
+          final item = items[index];
           final value = realtimeData[item.address.toString()];
-          final isOn = value != null && (value & (1 << (item.bit ?? 0))) != 0;
-
           return RelayWidget(
             item: item,
             value: value,
-            key: ValueKey('relay_${item.address}_${isOn}_${value}'),
+            key: ValueKey('relay_${item.address}'),
           );
-        }).toList(),
+        },
       ),
     );
   }
