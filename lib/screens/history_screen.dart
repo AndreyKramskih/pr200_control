@@ -1,12 +1,12 @@
 // lib/screens/history_screen.dart
+import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../models/config_model.dart';
 import '../services/owen_cloud_service.dart';
 import '../services/logger_service.dart';
-import 'dart:io';
-import 'dart:convert';
-import 'package:flutter/services.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -164,8 +164,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
       // === Формируем CSV ===
       final buffer = StringBuffer();
-
-      // BOM для корректного открытия русских букв в Excel
+      // BOM для Excel, чтобы русские буквы не превращались в кракозябры
       buffer.writeCharCode(0xFEFF);
 
       // Заголовки
@@ -176,7 +175,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
             : '';
         header.add('"${item.name}$unit"');
       }
-      buffer.writeln(header.join(';')); // Excel по умолчанию ждёт ';'
+      buffer.writeln(header.join(';'));
 
       // Собираем все временные метки
       final allTimestamps = <DateTime>{};
@@ -201,83 +200,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
         final row = <String>[_fmtFull(ts)];
         for (final item in selectedList) {
           final v = lookup[item.address]?[ts] ?? '';
-          // Экранируем кавычки и точки с запятой
           row.add('"${v.replaceAll('"', '""')}"');
         }
         buffer.writeln(row.join(';'));
       }
 
-      // === Сохраняем файл ===
-      final baseDir = Platform.isAndroid
-          ? '/storage/emulated/0/Android/data/com.example.pr200_control/files'
-          : Directory.current.path;
-      final exportDir = Directory('$baseDir/export');
-      if (!await exportDir.exists()) {
-        await exportDir.create(recursive: true);
-      }
-
+      // === Сохраняем во временную папку приложения ===
+      // (не в Android/data — она скрыта от файловых менеджеров)
+      final tmpDir = Directory.systemTemp;
       final dateStr = DateTime.now()
           .toIso8601String()
           .substring(0, 19)
           .replaceAll(':', '-');
       final fileName = 'История_$dateStr.csv';
-      final file = File('${exportDir.path}/$fileName');
+      final file = File('${tmpDir.path}/$fileName');
       await file.writeAsString(buffer.toString(), encoding: utf8);
 
-      // === Показываем путь пользователю ===
-      if (!mounted) return;
-      setState(() {
-        _status = 'Файл сохранён: ${file.path}';
-      });
-
-      await showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Файл сохранён'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'CSV-файл создан в папке приложения:',
-                style: TextStyle(fontSize: 13),
-              ),
-              const SizedBox(height: 8),
-              SelectableText(
-                file.path,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-              ),
-              const SizedBox(height: 12),
-              const Text(
-                'Откройте этот путь в файловом менеджере — файл можно открыть '
-                'в Excel или Google Таблицах.',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: file.path));
-                if (ctx.mounted) Navigator.pop(ctx);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Путь скопирован в буфер'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
-              },
-              child: const Text('Копировать путь'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Закрыть'),
-            ),
-          ],
-        ),
+      // === Открываем системное меню «Поделиться» ===
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'text/csv')],
+        subject: 'История параметров PR200',
+        text:
+            'Файл истории параметров с ${_fmtShort(_from)} по ${_fmtShort(_to)}',
       );
+
+      if (mounted) {
+        setState(() => _status = 'Файл подготовлен к отправке');
+      }
     } catch (e) {
       LoggerService().log('❌ Экспорт CSV: $e', level: LogLevel.error);
       if (mounted) {
@@ -311,7 +260,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            icon: const Icon(Icons.file_download),
+            icon: const Icon(Icons.share),
             onPressed: _data.isEmpty ? null : _exportToCsv,
             tooltip: 'Экспорт в CSV',
           ),
