@@ -215,6 +215,60 @@ class OwenCloudService extends ChangeNotifier {
     }
   }
 
+  /// Превращает ответ сервера Owen Cloud в понятное пользователю сообщение.
+  String _parseWriteError(int status, String body) {
+    String serverMessage = '';
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map && decoded['message'] is String) {
+        serverMessage = decoded['message'] as String;
+      }
+    } catch (_) {
+      serverMessage = body;
+    }
+
+    final lower = serverMessage.toLowerCase();
+
+    // Параметр помечен в Owen Cloud как «не записываемый»
+    if (lower.contains('не записыва')) {
+      return 'Параметр недоступен для записи.\n'
+          'Проверьте в Owen Cloud: должна быть разрешена запись '
+          '(функция 06 или 16) и включён «Полный доступ» в Owen Configurator.';
+    }
+
+    if (lower.contains('необходимо заполнить')) {
+      return 'Неверный формат запроса к Owen Cloud (обратитесь к разработчику).';
+    }
+
+    if (status == 401) {
+      return 'Ошибка авторизации Owen Cloud. Проверьте логин и пароль.';
+    }
+
+    if (status == 403) {
+      return 'Доступ к записи запрещён в Owen Cloud.';
+    }
+
+    if (status == 404) {
+      return 'Параметр не найден в Owen Cloud. Возможно, изменился ID.';
+    }
+
+    if (status == 429) {
+      return 'Слишком много запросов к Owen Cloud. Подождите и повторите.';
+    }
+
+    if (status >= 500) {
+      return serverMessage.isNotEmpty
+          ? 'Ошибка сервера Owen Cloud: $serverMessage'
+          : 'Ошибка сервера Owen Cloud (HTTP $status). Повторите позже.';
+    }
+
+    if (serverMessage.isNotEmpty) {
+      return 'Ошибка Owen Cloud: $serverMessage';
+    }
+
+    return 'Не удалось выполнить запись (HTTP $status).';
+  }
+
   // ==================== СПИСОК УСТРОЙСТВ ====================
 
   Future<List<Map<String, dynamic>>> getDevices() async {
@@ -527,8 +581,11 @@ class OwenCloudService extends ChangeNotifier {
       );
 
       if (response.statusCode != 200) {
-        _lastError = 'write-data: HTTP ${response.statusCode} ${response.body}';
-        LoggerService().log(_lastError, level: LogLevel.error);
+        _lastError = _parseWriteError(response.statusCode, response.body);
+        LoggerService().log(
+          '❌ Owen Cloud write: $_lastError',
+          level: LogLevel.error,
+        );
         return false;
       }
 
@@ -573,7 +630,11 @@ class OwenCloudService extends ChangeNotifier {
         jsonEncode({'data': writeParams}),
       );
       if (response.statusCode != 200) {
-        _lastError = 'write-data: HTTP ${response.statusCode}';
+        _lastError = _parseWriteError(response.statusCode, response.body);
+        LoggerService().log(
+          '❌ Owen Cloud batch write: $_lastError',
+          level: LogLevel.error,
+        );
         return false;
       }
       for (final addr in values.keys) {

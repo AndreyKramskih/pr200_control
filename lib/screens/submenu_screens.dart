@@ -742,7 +742,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
           _showSuccess('Все параметры сохранены!');
           await _reloadSettings();
         } else {
-          _showError('Ошибка при сохранении некоторых параметров');
+          _showError('Ошибка сохранения: ${modbusManager.lastError}');
           await _reloadSettings();
         }
       }
@@ -1035,9 +1035,13 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       if (mounted && _active) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(success ? 'Параметр сохранен' : 'Ошибка сохранения'),
+            content: Text(
+              success
+                  ? 'Параметр сохранён'
+                  : 'Ошибка: ${modbusManager.lastError}',
+            ),
             backgroundColor: success ? Colors.green : Colors.red,
-            duration: const Duration(seconds: 2),
+            duration: Duration(seconds: success ? 2 : 6),
           ),
         );
       }
@@ -1260,7 +1264,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
         _onModeChanged(address, newValue);
         _showSuccess('Режим насоса изменен');
       } else if (mounted && _active) {
-        _showError('Ошибка изменения режима');
+        _showError('Ошибка изменения режима: ${modbusManager.lastError}');
       }
     });
   }
