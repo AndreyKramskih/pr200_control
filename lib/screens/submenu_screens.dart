@@ -42,6 +42,8 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   Timer? _updateTimer;
   bool _active = true;
 
+  bool _settingsLoadingShown = false;
+
   bool get _isRealtimeType {
     final config = Provider.of<ConfigModel>(context, listen: false);
     final system = config.getSystem(widget.systemId);
@@ -627,6 +629,12 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       final submenu = system.submenus[widget.submenuId];
       if (submenu == null) return;
 
+      // ✅ Показываем индикатор, что идёт проверка параметров
+      _showSettingsLoading();
+
+      // Небольшая пауза, чтобы диалог успел отрисоваться
+      await Future.delayed(const Duration(milliseconds: 100));
+
       final Map<int, dynamic> changedValues = <int, dynamic>{};
 
       if (submenu.groups != null && submenu.groups!.isNotEmpty) {
@@ -644,7 +652,10 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
                   type: item.type,
                 );
               }
-              if (!_active) return;
+              if (!_active) {
+                _hideSettingsLoading();
+                return;
+              }
 
               if (currentValue != null && newValue != currentValue) {
                 changedValues[item.address] = newValue;
@@ -653,6 +664,10 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
           }
         }
       }
+
+      // ✅ Прячем индикатор — сбор завершён
+      _hideSettingsLoading();
+      if (!_active) return;
 
       if (changedValues.isEmpty) {
         _showSuccess('Нет измененных параметров для сохранения');
@@ -1089,6 +1104,38 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       }
     } catch (_) {}
     return '';
+  }
+
+  void _showSettingsLoading() {
+    if (!mounted || _settingsLoadingShown) return;
+    _settingsLoadingShown = true;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: true,
+      builder: (_) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Проверка изменений...'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _hideSettingsLoading() {
+    if (!mounted || !_settingsLoadingShown) return;
+    _settingsLoadingShown = false;
+    Navigator.of(context, rootNavigator: true).pop();
   }
 
   void _showSuccess(String message) {
