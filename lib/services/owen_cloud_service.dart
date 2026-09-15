@@ -704,7 +704,7 @@ class OwenCloudService extends ChangeNotifier {
 
       _registerCache.remove(address);
       _floatCache.remove(address);
-      _valueCache.remove(address);
+      _putCache(address, value);
       LoggerService().log('✅ Owen Cloud: запись $address = $value');
       return true;
     } catch (e) {
@@ -753,7 +753,7 @@ class OwenCloudService extends ChangeNotifier {
       for (final addr in values.keys) {
         _registerCache.remove(addr);
         _floatCache.remove(addr);
-        _valueCache.remove(addr);
+        _putCache(addr, values[addr]);
       }
       return true;
     } catch (e) {
