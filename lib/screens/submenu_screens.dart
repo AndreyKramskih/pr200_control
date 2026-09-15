@@ -948,6 +948,10 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       if (!_active) return;
 
       if (success) {
+        if (config.connectionType == 'cloud') {
+          await Future.delayed(const Duration(seconds: 5));
+          if (!mounted || !_active) return;
+        }
         await _loadRealtimeData(submenu);
         if (!_active) return;
 
