@@ -335,14 +335,13 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
           _status = '✅ Подключено к $ip:$port';
           _statusColor = Colors.green;
         });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Подключение успешно!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
+        if (!mounted) return;
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(
+            content: Text('Подключение успешно!'),
+            backgroundColor: Colors.green,
+          ),
+        );
       } else {
         setState(() {
           _status = '❌ Ошибка: ${modbus.lastError}';
@@ -388,14 +387,13 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
           _status = '✅ RTU подключен к $devicePath';
           _statusColor = Colors.green;
         });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('RTU подключен!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
+        if (!mounted) return;
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(
+            content: Text('RTU подключен!'),
+            backgroundColor: Colors.green,
+          ),
+        );
         LoggerService().log('✅ RTU подключен к $devicePath');
       } else {
         setState(() {

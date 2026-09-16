@@ -383,15 +383,14 @@ class _LogScreenState extends State<LogScreen> {
           TextButton(
             onPressed: () async {
               await LoggerService().clearLogs();
+              if (!mounted) return;
               Navigator.pop(context);
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Логи очищены'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              }
+              ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                const SnackBar(
+                  content: Text('Логи очищены'),
+                  backgroundColor: Colors.green,
+                ),
+              );
             },
             child: const Text('Очистить'),
           ),
@@ -434,11 +433,10 @@ class _LogScreenState extends State<LogScreen> {
       // Показываем диалог с выбором действия
       _showShareDialog(context, fullText);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-          SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red),
+      );
     }
   }
 

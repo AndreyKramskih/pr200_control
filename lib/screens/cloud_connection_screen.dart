@@ -145,14 +145,13 @@ class _CloudConnectionScreenState extends State<CloudConnectionScreen> {
     );
 
     if (!ok) {
-      if (mounted) {
-        messenger?.showSnackBar(
-          SnackBar(
-            content: Text('❌ ${service.lastError}'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      if (!mounted) return;
+      messenger?.showSnackBar(
+        SnackBar(
+          content: Text('❌ ${service.lastError}'),
+          backgroundColor: Colors.red,
+        ),
+      );
       setState(() {
         _connecting = false;
         _status = '❌ ${service.lastError}';

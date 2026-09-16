@@ -719,9 +719,6 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       );
 
       if (!mounted || !_active || confirm != true) return;
-      if (mounted) {
-        navigator.pop();
-      }
       messenger?.showSnackBar(
         const SnackBar(content: Text('Параметры сохранены')),
       );
