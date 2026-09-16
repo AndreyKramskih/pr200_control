@@ -678,7 +678,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
       );
 
       final messenger = ScaffoldMessenger.maybeOf(context);
-      final navigator = Navigator.of(context);
+      // final navigator = Navigator.of(context);
       final confirm = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
