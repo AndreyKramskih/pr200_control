@@ -187,7 +187,7 @@ class ModbusManager {
   // Запись регистра (инвалидируем кеш)
   Future<bool> writeRegister(
     int address,
-    dynamic value, {
+    num value, {
     String type = 'int',
   }) async {
     final success = await _activeService.writeRegister(
@@ -323,7 +323,7 @@ class ModbusManager {
 
   // Групповая запись (инвалидируем кеш)
   Future<bool> writeMultipleRegisters(
-    Map<int, dynamic> values, {
+    Map<int, num> values, {
     String type = 'int',
   }) async {
     final service = _activeService;

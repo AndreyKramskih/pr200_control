@@ -138,6 +138,8 @@ class ModbusService extends ChangeNotifier {
 
   Future<Uint8List?> _sendRequest(Uint8List request) async {
     Socket? tempSocket;
+    StreamSubscription<Uint8List>? subscription;
+    Timer? timer;
 
     try {
       LoggerService().log('📤 Отправка запроса...');
@@ -154,7 +156,7 @@ class ModbusService extends ChangeNotifier {
       final completer = Completer<Uint8List>();
       final List<int> responseData = [];
 
-      final subscription = tempSocket.listen(
+      subscription = tempSocket.listen(
         (data) {
           LoggerService().log(
             '📥 Получено ${data.length} байт',
@@ -192,7 +194,6 @@ class ModbusService extends ChangeNotifier {
         },
       );
 
-      Timer? timer;
       if (_timeout > 0) {
         timer = Timer(Duration(seconds: _timeout), () {
           if (!completer.isCompleted) {
@@ -205,28 +206,22 @@ class ModbusService extends ChangeNotifier {
         });
       }
 
-      try {
-        final response = await completer.future;
-        timer?.cancel();
-        await subscription.cancel();
-        await tempSocket.close();
-        return response;
-      } catch (e) {
-        timer?.cancel();
-        await subscription.cancel();
-        await tempSocket.close();
-        rethrow;
-      }
+      return await completer.future;
     } on TimeoutException catch (e) {
       _lastError = e.toString();
       LoggerService().log('❌ _sendRequest: таймаут: $e', level: LogLevel.error);
-      await tempSocket?.close();
       return null;
     } catch (e) {
       _lastError = e.toString();
       LoggerService().log('❌ _sendRequest: ошибка: $e', level: LogLevel.error);
-      await tempSocket?.close();
       return null;
+    } finally {
+      timer?.cancel();
+      try {
+        await subscription?.cancel();
+      } finally {
+        await tempSocket?.close();
+      }
     }
   }
 
@@ -299,6 +294,39 @@ class ModbusService extends ChangeNotifier {
 
   // ==================== ГРУППОВОЕ ЧТЕНИЕ ====================
 
+  List<List<int>> _groupAdjacentAddresses(
+    Iterable<int> addresses, {
+    required int registersPerAddress,
+  }) {
+    final sortedAddresses = addresses.toList()..sort();
+    final groups = <List<int>>[];
+    var currentGroup = <int>[];
+
+    for (final addr in sortedAddresses) {
+      if (currentGroup.isEmpty) {
+        currentGroup.add(addr);
+        continue;
+      }
+
+      final start = currentGroup.first;
+      final isAdjacent = addr == currentGroup.last + 1;
+      final registerCount = (addr - start + 1) * registersPerAddress;
+
+      if (isAdjacent && registerCount <= maxRegistersPerRequest) {
+        currentGroup.add(addr);
+      } else {
+        groups.add(List<int>.from(currentGroup));
+        currentGroup = [addr];
+      }
+    }
+
+    if (currentGroup.isNotEmpty) {
+      groups.add(currentGroup);
+    }
+
+    return groups;
+  }
+
   Future<Map<int, int>> readMultipleRegisters(List<int> addresses) async {
     LoggerService().log('📖 Чтение ${addresses.length} регистров');
 
@@ -308,31 +336,7 @@ class ModbusService extends ChangeNotifier {
 
     final result = <int, int>{};
 
-    final sortedAddresses = List<int>.from(addresses)..sort();
-
-    final groups = <List<int>>[];
-    var currentGroup = <int>[];
-
-    for (final addr in sortedAddresses) {
-      if (currentGroup.isEmpty) {
-        currentGroup.add(addr);
-      } else if (addr - currentGroup.last <= 1) {
-        final start = currentGroup.first;
-        final count = addr - start + 1;
-        if (count <= maxRegistersPerRequest) {
-          currentGroup.add(addr);
-        } else {
-          groups.add(List<int>.from(currentGroup));
-          currentGroup = [addr];
-        }
-      } else {
-        groups.add(List<int>.from(currentGroup));
-        currentGroup = [addr];
-      }
-    }
-    if (currentGroup.isNotEmpty) {
-      groups.add(currentGroup);
-    }
+    final groups = _groupAdjacentAddresses(addresses, registersPerAddress: 1);
     LoggerService().log('✅ Сформировано ${groups.length} групп для чтения');
     //print('🔵 Сформировано ${groups.length} групп для чтения');
 
@@ -376,35 +380,7 @@ class ModbusService extends ChangeNotifier {
 
     final result = <int, double>{};
 
-    final sortedAddresses = List<int>.from(addresses)..sort();
-
-    final groups = <List<int>>[];
-    var currentGroup = <int>[];
-
-    for (final addr in sortedAddresses) {
-      if (currentGroup.isEmpty) {
-        currentGroup.add(addr);
-      } else {
-        final lastAddr = currentGroup.last;
-        // ✅ Float-адреса идут подряд, если разница = 1
-        if (addr == lastAddr + 1) {
-          final start = currentGroup.first;
-          final newRegisterCount = ((addr - start) * 2) + 2;
-          if (newRegisterCount <= maxRegistersPerRequest) {
-            currentGroup.add(addr);
-          } else {
-            groups.add(List<int>.from(currentGroup));
-            currentGroup = [addr];
-          }
-        } else {
-          groups.add(List<int>.from(currentGroup));
-          currentGroup = [addr];
-        }
-      }
-    }
-    if (currentGroup.isNotEmpty) {
-      groups.add(currentGroup);
-    }
+    final groups = _groupAdjacentAddresses(addresses, registersPerAddress: 2);
 
     LoggerService().log(
       '🔵 Сформировано ${groups.length} групп для чтения float',
@@ -466,7 +442,7 @@ class ModbusService extends ChangeNotifier {
   // ==================== ГРУППОВАЯ ЗАПИСЬ ====================
 
   Future<Map<int, bool>> writeMultipleRegisters(
-    Map<int, dynamic> values, {
+    Map<int, num> values, {
     String type = 'int',
   }) async {
     LoggerService().log(
@@ -485,9 +461,14 @@ class ModbusService extends ChangeNotifier {
 
     for (final entry in values.entries) {
       if (type == 'float') {
-        floatValues[entry.key] = double.parse(entry.value.toString());
+        floatValues[entry.key] = entry.value.toDouble();
       } else {
-        intValues[entry.key] = int.parse(entry.value.toString());
+        if (entry.value % 1 != 0) {
+          throw FormatException(
+            'Целочисленное значение ожидается для адреса ${entry.key}',
+          );
+        }
+        intValues[entry.key] = entry.value.toInt();
       }
     }
 
@@ -513,34 +494,7 @@ class ModbusService extends ChangeNotifier {
   ) async {
     final results = <int, bool>{};
 
-    final sortedAddresses = values.keys.toList()..sort();
-
-    final groups = <List<int>>[];
-    var currentGroup = <int>[];
-
-    for (final addr in sortedAddresses) {
-      if (currentGroup.isEmpty) {
-        currentGroup.add(addr);
-      } else {
-        final lastAddr = currentGroup.last;
-        if (addr == lastAddr + 1) {
-          final start = currentGroup.first;
-          final count = addr - start + 1;
-          if (count <= maxRegistersPerRequest) {
-            currentGroup.add(addr);
-          } else {
-            groups.add(List<int>.from(currentGroup));
-            currentGroup = [addr];
-          }
-        } else {
-          groups.add(List<int>.from(currentGroup));
-          currentGroup = [addr];
-        }
-      }
-    }
-    if (currentGroup.isNotEmpty) {
-      groups.add(currentGroup);
-    }
+    final groups = _groupAdjacentAddresses(values.keys, registersPerAddress: 1);
 
     LoggerService().log(
       '🔵 Сформировано ${groups.length} групп для записи int',
@@ -617,35 +571,7 @@ class ModbusService extends ChangeNotifier {
   ) async {
     final results = <int, bool>{};
 
-    final sortedAddresses = values.keys.toList()..sort();
-
-    final groups = <List<int>>[];
-    var currentGroup = <int>[];
-
-    for (final addr in sortedAddresses) {
-      if (currentGroup.isEmpty) {
-        currentGroup.add(addr);
-      } else {
-        final lastAddr = currentGroup.last;
-        // ✅ Float-адреса идут подряд, если разница = 1
-        if (addr == lastAddr + 1) {
-          final start = currentGroup.first;
-          final newRegisterCount = ((addr - start) * 2) + 2;
-          if (newRegisterCount <= maxRegistersPerRequest) {
-            currentGroup.add(addr);
-          } else {
-            groups.add(List<int>.from(currentGroup));
-            currentGroup = [addr];
-          }
-        } else {
-          groups.add(List<int>.from(currentGroup));
-          currentGroup = [addr];
-        }
-      }
-    }
-    if (currentGroup.isNotEmpty) {
-      groups.add(currentGroup);
-    }
+    final groups = _groupAdjacentAddresses(values.keys, registersPerAddress: 2);
 
     LoggerService().log(
       '🔵 Сформировано ${groups.length} групп для записи float',
@@ -933,7 +859,7 @@ class ModbusService extends ChangeNotifier {
 
   Future<bool> writeRegister(
     int address,
-    dynamic value, {
+    num value, {
     String type = 'int',
   }) async {
     LoggerService().log(

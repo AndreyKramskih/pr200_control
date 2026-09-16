@@ -328,17 +328,6 @@ class ModbusRtuService extends ChangeNotifier {
 
       // Определяем тип запроса (6 - запись одного регистра, 16 - групповая запись)
       final bool isWrite = request[1] == 6 || request[1] == 16;
-
-      // Для записи возвращаем успех без ожидания ответа
-      if (isWrite) {
-        LoggerService().log(
-          '✅ Запись отправлена (ожидание ответа не требуется)',
-        );
-        await Future.delayed(const Duration(milliseconds: 300));
-        return Uint8List.fromList([_slaveId, request[1], 0, 0, 0, 0, 0, 0]);
-      }
-
-      // Для чтения ждем ответ
       final Stopwatch stopwatch = Stopwatch()..start();
 
       while (stopwatch.elapsedMilliseconds < _timeout) {
@@ -361,6 +350,23 @@ class ModbusRtuService extends ChangeNotifier {
             return null;
           }
 
+          if (isWrite) {
+            final bool validWriteResponse =
+                response.length == 8 &&
+                response[0] == request[0] &&
+                response[1] == request[1] &&
+                response[2] == request[2] &&
+                response[3] == request[3] &&
+                response[4] == request[4] &&
+                response[5] == request[5];
+
+            if (!validWriteResponse) {
+              _lastError = 'Некорректный ответ на запись';
+              LoggerService().log('❌ $_lastError', level: LogLevel.error);
+              return null;
+            }
+          }
+
           return response;
         }
         await Future.delayed(const Duration(milliseconds: 50));
@@ -370,6 +376,7 @@ class ModbusRtuService extends ChangeNotifier {
       LoggerService().log('❌ $_lastError', level: LogLevel.error);
       return null;
     } catch (e) {
+      _responseBuffer.clear();
       _lastError = e.toString();
       LoggerService().log('❌ RTU ошибка: $e', level: LogLevel.error);
       return null;
@@ -477,7 +484,7 @@ class ModbusRtuService extends ChangeNotifier {
 
   Future<bool> writeRegister(
     int address,
-    dynamic value, {
+    num value, {
     String type = 'int',
   }) async {
     return await _lock.synchronized(() async {
@@ -492,7 +499,7 @@ class ModbusRtuService extends ChangeNotifier {
         );
 
         if (type == 'float') {
-          final floatValue = double.parse(value.toString());
+          final floatValue = value.toDouble();
           final ByteData byteData = ByteData(4);
           byteData.setFloat32(0, floatValue, Endian.little);
           final Uint8List bytes = byteData.buffer.asUint8List();
@@ -509,10 +516,10 @@ class ModbusRtuService extends ChangeNotifier {
           _floatCache[address] = floatValue;
           return true;
         } else {
-          return await _writeSingleRegister(
-            address,
-            int.parse(value.toString()),
-          );
+          if (value % 1 != 0) {
+            throw FormatException('Целочисленное значение ожидается');
+          }
+          return await _writeSingleRegister(address, value.toInt());
         }
       } catch (e) {
         _lastError = e.toString();
@@ -568,24 +575,33 @@ class ModbusRtuService extends ChangeNotifier {
           '📥 RTU ответ: ${response.map((int e) => e.toRadixString(16).padLeft(2, '0')).join(' ')}',
         );
 
-        if (_verifyCrc(response) && response.length >= 8) {
+        final bool isExpectedResponse =
+            response.length == 8 &&
+            response[0] == _slaveId &&
+            response[1] == 6 &&
+            response[2] == (address >> 8) &&
+            response[3] == (address & 0xFF) &&
+            response[4] == (value >> 8) &&
+            response[5] == (value & 0xFF);
+
+        if (isExpectedResponse && _verifyCrc(response)) {
           _registerCache[address] = value;
           LoggerService().log(
             '✅ RTU запись подтверждена (адрес $address = $value)',
           );
           return true;
         }
+
+        _lastError = 'Некорректный ответ на запись регистра';
+        LoggerService().log('❌ $_lastError', level: LogLevel.error);
+        return false;
       }
 
-      // Даже без ответа считаем успешным
-      _registerCache[address] = value;
-      LoggerService().log('✅ RTU запись выполнена (адрес $address = $value)');
-
-      // Дополнительная задержка после записи
-      await Future.delayed(const Duration(milliseconds: 800));
-
-      return true;
+      _lastError = 'Таймаут: нет ответа на запись регистра';
+      LoggerService().log('❌ $_lastError', level: LogLevel.error);
+      return false;
     } catch (e) {
+      _responseBuffer.clear();
       _lastError = e.toString();
       LoggerService().log(
         '❌ _writeSingleRegister ошибка: $e',
@@ -687,7 +703,7 @@ class ModbusRtuService extends ChangeNotifier {
   }
 
   Future<bool> writeMultipleRegisters(
-    Map<int, dynamic> values, {
+    Map<int, num> values, {
     String type = 'int',
   }) async {
     return await _lock.synchronized(() async {

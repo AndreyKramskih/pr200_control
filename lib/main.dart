@@ -211,85 +211,92 @@ class MyAppState extends State<MyApp> {
     final config = _config!;
 
     if (config.connectionType == 'rtu') {
-      try {
-        final devices = await _modbusRtuService.getAvailableDevices();
-
-        if (devices.isNotEmpty) {
-          String port;
-          if (config.rtuConfig != null && config.rtuConfig!.port.isNotEmpty) {
-            final savedPort = config.rtuConfig!.port;
-            final found = devices.firstWhere(
-              (d) => d.deviceName == savedPort,
-              orElse: () => devices.first,
-            );
-            port = found.deviceName;
-          } else {
-            port = devices.first.deviceName;
-          }
-
-          final baudRate = config.rtuConfig?.baudRate ?? 115200;
-
-          await _modbusRtuService.connect(
-            port: port,
-            slaveId: config.modbusServer.slaveId,
-            timeout: config.modbusServer.timeout,
-            baudRate: baudRate,
-          );
-          LoggerService().log('✅ RTU автоподключение успешно');
-        } else {
-          LoggerService().log('⚠️ USB устройство не найдено для RTU');
-        }
-      } catch (e) {
-        LoggerService().log(
-          '❌ Ошибка RTU автоподключения: $e',
-          level: LogLevel.error,
-        );
-      }
+      await _autoConnectRtu(config);
     } else if (config.connectionType == 'cloud') {
-      final cloud = config.cloudConfig;
-      if (cloud == null || !cloud.hasCredentials) {
-        LoggerService().log('⚠️ Owen Cloud: нет логина/пароля в конфиге');
+      await _autoConnectCloud(config);
+    } else {
+      await _autoConnectTcp(config);
+    }
+  }
+
+  Future<void> _autoConnectRtu(ConfigModel config) async {
+    try {
+      final devices = await _modbusRtuService.getAvailableDevices();
+
+      if (devices.isEmpty) {
+        LoggerService().log('⚠️ USB устройство не найдено для RTU');
         return;
       }
-      try {
-        final ok = await _cloudService.connect(
-          login: cloud.login,
-          password: cloud.password,
-          deviceId: cloud.deviceId,
-          writeGroupId: cloud.writeGroupId,
-          cachedParamIds: cloud.paramIdCache,
-        );
-        if (ok) {
-          LoggerService().log('✅ Owen Cloud автоподключение успешно');
-          // Обновим кэш ID параметров
-          await _cloudService.refreshParamIds();
-        } else {
-          LoggerService().log(
-            '❌ Owen Cloud автоподключение: ${_cloudService.lastError}',
-            level: LogLevel.error,
-          );
-        }
-      } catch (e) {
+
+      final savedPort = config.rtuConfig?.port;
+      final device = savedPort == null || savedPort.isEmpty
+          ? devices.first
+          : devices.firstWhere(
+              (device) => device.deviceName == savedPort,
+              orElse: () => devices.first,
+            );
+
+      await _modbusRtuService.connect(
+        port: device.deviceName,
+        slaveId: config.modbusServer.slaveId,
+        timeout: config.modbusServer.timeout,
+        baudRate: config.rtuConfig?.baudRate ?? 115200,
+      );
+      LoggerService().log('✅ RTU автоподключение успешно');
+    } catch (e) {
+      LoggerService().log(
+        '❌ Ошибка RTU автоподключения: $e',
+        level: LogLevel.error,
+      );
+    }
+  }
+
+  Future<void> _autoConnectCloud(ConfigModel config) async {
+    final cloud = config.cloudConfig;
+    if (cloud == null || !cloud.hasCredentials) {
+      LoggerService().log('⚠️ Owen Cloud: нет логина/пароля в конфиге');
+      return;
+    }
+
+    try {
+      final ok = await _cloudService.connect(
+        login: cloud.login,
+        password: cloud.password,
+        deviceId: cloud.deviceId,
+        writeGroupId: cloud.writeGroupId,
+        cachedParamIds: cloud.paramIdCache,
+      );
+      if (ok) {
+        LoggerService().log('✅ Owen Cloud автоподключение успешно');
+        await _cloudService.refreshParamIds();
+      } else {
         LoggerService().log(
-          '❌ Ошибка автоподключения Owen Cloud: $e',
+          '❌ Owen Cloud автоподключение: ${_cloudService.lastError}',
           level: LogLevel.error,
         );
       }
-    } else {
-      try {
-        await _modbusService.connect(
-          config.modbusServer.ip,
-          port: config.modbusServer.port,
-          slaveId: config.modbusServer.slaveId,
-          timeout: config.modbusServer.timeout,
-        );
-        LoggerService().log('✅ TCP автоподключение успешно');
-      } catch (e) {
-        LoggerService().log(
-          '❌ Ошибка TCP автоподключения: $e',
-          level: LogLevel.error,
-        );
-      }
+    } catch (e) {
+      LoggerService().log(
+        '❌ Ошибка автоподключения Owen Cloud: $e',
+        level: LogLevel.error,
+      );
+    }
+  }
+
+  Future<void> _autoConnectTcp(ConfigModel config) async {
+    try {
+      await _modbusService.connect(
+        config.modbusServer.ip,
+        port: config.modbusServer.port,
+        slaveId: config.modbusServer.slaveId,
+        timeout: config.modbusServer.timeout,
+      );
+      LoggerService().log('✅ TCP автоподключение успешно');
+    } catch (e) {
+      LoggerService().log(
+        '❌ Ошибка TCP автоподключения: $e',
+        level: LogLevel.error,
+      );
     }
   }
 

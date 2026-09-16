@@ -664,7 +664,7 @@ class OwenCloudService extends ChangeNotifier {
 
   Future<bool> writeRegister(
     int address,
-    dynamic value, {
+    num value, {
     String type = 'int',
   }) async {
     if (!_connected) {
@@ -719,7 +719,7 @@ class OwenCloudService extends ChangeNotifier {
   }
 
   Future<bool> writeMultipleRegisters(
-    Map<int, dynamic> values, {
+    Map<int, num> values, {
     String type = 'int',
   }) async {
     if (!await _ensureToken()) return false;
