@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show debugPrint;
-import 'package:permission_handler/permission_handler.dart';
+// import 'package:permission_handler/permission_handler.dart'
+//     if (dart.library.io) 'permission_placeholder.dart';
+import '../permission_placeholder.dart';
+
 import '../core/constants/app_constants.dart';
 
 class LoggerService {

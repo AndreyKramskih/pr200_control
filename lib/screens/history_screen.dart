@@ -2,8 +2,9 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
+// import 'package:path_provider/path_provider.dart';
 import '../models/config_model.dart';
 import '../services/owen_cloud_service.dart';
 import '../services/logger_service.dart';
@@ -164,10 +165,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
       // === Формируем CSV ===
       final buffer = StringBuffer();
-      // BOM для Excel, чтобы русские буквы не превращались в кракозябры
-      buffer.writeCharCode(0xFEFF);
+      buffer.writeCharCode(0xFEFF); // BOM для Excel
 
-      // Заголовки
       final header = <String>['Время'];
       for (final item in selectedList) {
         final unit = (item.unit != null && item.unit!.isNotEmpty)
@@ -177,7 +176,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
       }
       buffer.writeln(header.join(';'));
 
-      // Собираем все временные метки
       final allTimestamps = <DateTime>{};
       for (final rows in _data.values) {
         for (final row in rows) {
@@ -186,7 +184,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
       }
       final sorted = allTimestamps.toList()..sort();
 
-      // address → timestamp → value
       final lookup = <int, Map<DateTime, String>>{};
       for (final entry in _data.entries) {
         lookup[entry.key] = {
@@ -195,7 +192,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
         };
       }
 
-      // Строки данных
       for (final ts in sorted) {
         final row = <String>[_fmtFull(ts)];
         for (final item in selectedList) {
@@ -205,36 +201,89 @@ class _HistoryScreenState extends State<HistoryScreen> {
         buffer.writeln(row.join(';'));
       }
 
-      // === Сохраняем во временную папку приложения ===
-      // (не в Android/data — она скрыта от файловых менеджеров)
-      final tmpDir = Directory.systemTemp;
+      // === Определяем папку для сохранения ===
+      Directory targetDir;
+      if (Platform.isAndroid) {
+        // На Android — внешняя папка приложения (доступна через файловый менеджер)
+        targetDir = Directory(
+          '/storage/emulated/0/Android/data/com.example.pr200_control/files/export',
+        );
+      } else if (Platform.isWindows) {
+        // На Windows — «Загрузки» пользователя
+        final userProfile = Platform.environment['USERPROFILE'];
+        targetDir = Directory('$userProfile\\Downloads');
+      } else {
+        // Linux/macOS — временная папка
+        targetDir = Directory.systemTemp;
+      }
+
+      if (!await targetDir.exists()) {
+        await targetDir.create(recursive: true);
+      }
+
       final dateStr = DateTime.now()
           .toIso8601String()
           .substring(0, 19)
           .replaceAll(':', '-');
       final fileName = 'История_$dateStr.csv';
-      final file = File('${tmpDir.path}/$fileName');
+      final file = File('${targetDir.path}${Platform.pathSeparator}$fileName');
       await file.writeAsString(buffer.toString(), encoding: utf8);
 
-      // === Открываем системное меню «Поделиться» ===
-      await SharePlus.instance.share(
-        ShareParams(
-          files: [XFile(file.path, mimeType: 'text/csv')],
-          subject: 'История параметров PR200',
-          text:
-              'Файл истории параметров с ${_fmtShort(_from)} по ${_fmtShort(_to)}',
-        ),
-      );
+      LoggerService().log('✅ CSV сохранён: ${file.path}');
 
-      if (mounted) {
-        setState(() => _status = 'Файл подготовлен к отправке');
-      }
+      if (!mounted) return;
+      setState(() => _status = 'Файл сохранён: ${file.path}');
+
+      // === Показываем диалог с путём и кнопкой копирования ===
+      await _showSavedDialog(file.path);
     } catch (e) {
       LoggerService().log('❌ Экспорт CSV: $e', level: LogLevel.error);
       if (mounted) {
         setState(() => _status = 'Ошибка экспорта: $e');
       }
     }
+  }
+
+  Future<void> _showSavedDialog(String path) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('✅ Файл сохранён'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('CSV-файл успешно создан:'),
+            const SizedBox(height: 8),
+            SelectableText(
+              path,
+              style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Откройте его через проводник или импортируйте в Excel.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: path));
+              ScaffoldMessenger.of(ctx).showSnackBar(
+                const SnackBar(content: Text('Путь скопирован в буфер обмена')),
+              );
+            },
+            child: const Text('Копировать путь'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   String _fmtShort(DateTime d) =>
@@ -262,7 +311,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
-            icon: const Icon(Icons.share),
+            icon: const Icon(Icons.download),
             onPressed: _data.isEmpty ? null : _exportToCsv,
             tooltip: 'Экспорт в CSV',
           ),

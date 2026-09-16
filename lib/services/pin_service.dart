@@ -30,13 +30,20 @@ class PinService {
           '/storage/emulated/0/Android/data/com.example.pr200_control/files';
       try {
         final dir = Directory(externalDir);
-        if (!await dir.exists()) {
-          await dir.create(recursive: true);
-        }
+        if (!await dir.exists()) await dir.create(recursive: true);
         return externalDir;
       } catch (e) {
         return '/data/data/com.example.pr200_control/files';
       }
+    } else if (Platform.isWindows) {
+      final userProfile = Platform.environment['USERPROFILE'] ?? '.';
+      final dir = Directory('$userProfile\\Documents\\PR200_Control');
+      if (!await dir.exists()) await dir.create(recursive: true);
+      return dir.path;
+    } else if (Platform.isIOS || Platform.isMacOS) {
+      final dir = Directory('${Directory.systemTemp.path}/PR200_Control');
+      if (!await dir.exists()) await dir.create(recursive: true);
+      return dir.path;
     } else {
       return Directory.current.path;
     }

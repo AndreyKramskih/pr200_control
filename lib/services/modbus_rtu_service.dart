@@ -2,11 +2,10 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter_serial_communication/flutter_serial_communication.dart';
-import 'package:flutter_serial_communication/models/device_info.dart';
 import '../models/config_model.dart';
 import '../models/modbus_data.dart';
 import 'logger_service.dart';
+import 'serial_port_abstraction.dart';
 import 'package:synchronized/synchronized.dart';
 
 /// Сервис Modbus RTU через USB (реальная реализация)
@@ -21,9 +20,9 @@ class ModbusRtuService extends ChangeNotifier {
   // ✅ Реентерабельная блокировка для последовательного выполнения операций
   final Lock _lock = Lock(reentrant: true);
 
-  final FlutterSerialCommunication _serialComm = FlutterSerialCommunication();
-  StreamSubscription? _messageListener;
-  StreamSubscription? _connectionListener;
+  late final SerialPortAdapter _adapter = SerialPortFactory.create();
+  StreamSubscription? _dataSub;
+  StreamSubscription? _connSub;
 
   final Map<int, int> _registerCache = {};
   final Map<int, double> _floatCache = {};
@@ -40,36 +39,15 @@ class ModbusRtuService extends ChangeNotifier {
   int get slaveId => _slaveId;
   int get timeout => _timeout ~/ 1000;
 
-  Future<List<DeviceInfo>> getAvailableDevices() async {
-    try {
-      final devices = await _serialComm.getAvailableDevices();
-      LoggerService().log('🔍 Найдено USB устройств: ${devices.length}');
-      return devices;
-    } catch (e) {
-      LoggerService().log(
-        '❌ Ошибка получения устройств: $e',
-        level: LogLevel.error,
-      );
-      return [];
-    }
+  Future<List<SerialDeviceInfo>> getAvailableDevices() async {
+    final devices = await _adapter.getAvailableDevices();
+    LoggerService().log('🔍 Найдено устройств: ${devices.length}');
+    return devices;
   }
 
   Future<List<String>> getAvailablePorts() async {
-    try {
-      final devices = await _serialComm.getAvailableDevices();
-      final List<String> ports = [];
-      for (final DeviceInfo device in devices) {
-        ports.add(device.deviceName);
-      }
-      LoggerService().log('🔍 Найдено портов: ${ports.length}');
-      return ports;
-    } catch (e) {
-      LoggerService().log(
-        '❌ Ошибка получения портов: $e',
-        level: LogLevel.error,
-      );
-      return [];
-    }
+    final devices = await _adapter.getAvailableDevices();
+    return devices.map((d) => d.deviceName).toList();
   }
 
   Future<bool> connect({
@@ -78,53 +56,41 @@ class ModbusRtuService extends ChangeNotifier {
     int timeout = 3,
     int baudRate = 9600,
   }) async {
-    LoggerService().log(
-      '🔵 Подключение RTU: порт=$port, slaveId=$slaveId, baudRate=$baudRate',
-    );
-
+    LoggerService().log('🔵 Подключение RTU: порт=$port, baudRate=$baudRate');
     try {
       _slaveId = slaveId;
       _timeout = timeout * 1000;
       _baudRate = baudRate;
       _portName = port;
 
-      final List<DeviceInfo> devices = await _serialComm.getAvailableDevices();
-
+      final devices = await _adapter.getAvailableDevices();
       if (devices.isEmpty) {
-        _lastError = 'USB устройства не найдены';
+        _lastError = 'Устройства не найдены';
         LoggerService().log('❌ $_lastError', level: LogLevel.error);
         return false;
       }
 
-      DeviceInfo? targetDevice;
-      for (final DeviceInfo device in devices) {
-        if (device.deviceName.contains(port) ||
-            port.contains(device.deviceName)) {
-          targetDevice = device;
+      SerialDeviceInfo? target;
+      for (final d in devices) {
+        if (d.deviceName == port || d.deviceName.contains(port)) {
+          target = d;
           break;
         }
       }
+      target ??= devices.first;
 
-      targetDevice ??= devices.first;
-
-      final String devicePath = targetDevice.deviceName;
-      LoggerService().log('🔌 Подключение к $devicePath');
-
-      final bool connected = await _serialComm.connect(targetDevice, baudRate);
-
-      if (!connected) {
-        _lastError = 'Не удалось подключиться к устройству';
-        LoggerService().log('❌ $_lastError', level: LogLevel.error);
+      final ok = await _adapter.connect(target, baudRate);
+      if (!ok) {
+        _lastError = 'Не удалось подключиться к ${target.deviceName}';
         return false;
       }
 
       _connected = true;
       _lastError = '';
-      _portName = devicePath;
-
+      _portName = target.deviceName;
       _startListening();
 
-      LoggerService().log('✅ RTU подключен к $devicePath');
+      LoggerService().log('✅ RTU подключен к ${target.deviceName}');
       notifyListeners();
       return true;
     } catch (e) {
@@ -140,43 +106,27 @@ class ModbusRtuService extends ChangeNotifier {
   }
 
   void _startListening() {
-    _messageListener?.cancel();
-    _connectionListener?.cancel();
+    _dataSub?.cancel();
+    _connSub?.cancel();
 
-    _messageListener = _serialComm
-        .getSerialMessageListener()
-        .receiveBroadcastStream()
-        .listen(
-          (event) {
-            if (event is List<int>) {
-              _onDataReceived(event);
-            }
-          },
-          onError: (error) {
-            LoggerService().log(
-              '❌ Ошибка чтения данных: $error',
-              level: LogLevel.error,
-            );
-          },
-        );
+    _dataSub = _adapter.dataStream.listen(
+      (data) => _onDataReceived(data),
+      onError: (e) =>
+          LoggerService().log('❌ data stream: $e', level: LogLevel.error),
+    );
 
-    _connectionListener = _serialComm
-        .getDeviceConnectionListener()
-        .receiveBroadcastStream()
-        .listen((event) {
-          if (event is bool) {
-            _connected = event;
-            if (!event) {
-              LoggerService().log('🔌 Соединение потеряно');
-              notifyListeners();
-            }
-          }
-        });
+    _connSub = _adapter.connectionStream.listen((isConnected) {
+      _connected = isConnected;
+      if (!isConnected) {
+        LoggerService().log('🔌 Соединение потеряно');
+        notifyListeners();
+      }
+    });
   }
 
   void _onDataReceived(List<int> data) {
     LoggerService().log(
-      '📥 Получено ${data.length} байт: ${data.map((int e) => e.toRadixString(16).padLeft(2, '0')).join(' ')}',
+      '📥 Получено ${data.length} байт: ${data.map((e) => e.toRadixString(16).padLeft(2, '0')).join(' ')}',
     );
     _responseBuffer.addAll(data);
   }
@@ -189,17 +139,9 @@ class ModbusRtuService extends ChangeNotifier {
     _activeAlarms.clear();
     _responseBuffer.clear();
 
-    await _messageListener?.cancel();
-    await _connectionListener?.cancel();
-
-    try {
-      await _serialComm.disconnect();
-    } catch (e) {
-      LoggerService().log(
-        '⚠️ Ошибка при отключении: $e',
-        level: LogLevel.warning,
-      );
-    }
+    await _dataSub?.cancel();
+    await _connSub?.cancel();
+    await _adapter.disconnect();
 
     notifyListeners();
   }
@@ -213,7 +155,7 @@ class ModbusRtuService extends ChangeNotifier {
       final Uint8List request = _buildModbusRequest(3, 0, 1);
       _responseBuffer.clear();
 
-      final bool sent = await _serialComm.write(request);
+      final bool sent = await _adapter.write(request);
       if (!sent) {
         return false;
       }
@@ -320,7 +262,7 @@ class ModbusRtuService extends ChangeNotifier {
 
       _responseBuffer.clear();
 
-      final bool sent = await _serialComm.write(request);
+      final bool sent = await _adapter.write(request);
       if (!sent) {
         _lastError = 'Ошибка отправки запроса';
         return null;
@@ -548,7 +490,7 @@ class ModbusRtuService extends ChangeNotifier {
       );
 
       _responseBuffer.clear();
-      final bool sent = await _serialComm.write(request);
+      final bool sent = await _adapter.write(request);
 
       if (!sent) {
         _lastError = 'Ошибка отправки запроса';

@@ -12,6 +12,13 @@ class ConfigManager {
   static String _getBaseDir() {
     if (Platform.isAndroid) {
       return '/storage/emulated/0/Android/data/com.example.pr200_control/files';
+    } else if (Platform.isWindows) {
+      final userProfile = Platform.environment['USERPROFILE'] ?? '.';
+      final dir = Directory('$userProfile\\Documents\\PR200_Control');
+      if (!dir.existsSync()) dir.createSync(recursive: true);
+      return dir.path;
+    } else if (Platform.isIOS || Platform.isMacOS) {
+      return '${Directory.systemTemp.path}/PR200_Control';
     } else {
       return Directory.current.path;
     }

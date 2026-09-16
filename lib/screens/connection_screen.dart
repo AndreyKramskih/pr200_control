@@ -1,9 +1,8 @@
 // lib/screens/connection_screen.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-//import 'dart:io';
 import 'dart:async';
-import 'package:flutter_serial_communication/models/device_info.dart';
+import '../services/serial_port_abstraction.dart';
 import '../models/config_model.dart';
 import '../services/modbus_service.dart';
 import '../services/modbus_rtu_service.dart';
@@ -35,8 +34,8 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
 
   // RTU переменные
   String _connectionType = 'tcp'; // 'tcp' или 'rtu'
-  List<DeviceInfo> _usbDevices = [];
-  DeviceInfo? _selectedDevice;
+  List<SerialDeviceInfo> _usbDevices = [];
+  SerialDeviceInfo? _selectedDevice;
   bool _isLoadingDevices = false;
   int _baudRate = 115200;
   final List<int> _baudRates = [
@@ -619,7 +618,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
             ),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: DropdownButton<DeviceInfo>(
+          child: DropdownButton<SerialDeviceInfo>(
             value: _selectedDevice,
             isExpanded: true,
             hint: Text(
@@ -631,12 +630,12 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
             dropdownColor: isDark ? Colors.grey[800] : Colors.white,
             items: [
               if (_usbDevices.isEmpty && !_isLoadingDevices)
-                const DropdownMenuItem<DeviceInfo>(
+                const DropdownMenuItem<SerialDeviceInfo>(
                   value: null,
                   child: Text('Нет устройств'),
                 ),
               ..._usbDevices.map((device) {
-                return DropdownMenuItem<DeviceInfo>(
+                return DropdownMenuItem<SerialDeviceInfo>(
                   value: device,
                   child: Text(
                     device.deviceName,
