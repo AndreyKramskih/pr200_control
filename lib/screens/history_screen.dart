@@ -217,11 +217,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
       await file.writeAsString(buffer.toString(), encoding: utf8);
 
       // === Открываем системное меню «Поделиться» ===
-      await Share.shareXFiles(
-        [XFile(file.path, mimeType: 'text/csv')],
-        subject: 'История параметров PR200',
-        text:
-            'Файл истории параметров с ${_fmtShort(_from)} по ${_fmtShort(_to)}',
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: 'text/csv')],
+          subject: 'История параметров PR200',
+          text:
+              'Файл истории параметров с ${_fmtShort(_from)} по ${_fmtShort(_to)}',
+        ),
       );
 
       if (mounted) {
@@ -403,7 +405,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
       scrollDirection: Axis.horizontal,
       child: SingleChildScrollView(
         child: DataTable(
-          headingRowColor: MaterialStateProperty.all(
+          headingRowColor: WidgetStateProperty.all(
             isDark ? Colors.grey[800] : Colors.grey[200],
           ),
           columns: [

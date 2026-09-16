@@ -18,7 +18,7 @@ class ModbusService extends ChangeNotifier {
   final Map<int, int> _registerCache = {};
   final List<AlarmItem> _activeAlarms = [];
 
-  static const int MAX_REGISTERS_PER_REQUEST = 12;
+  static const int maxRegistersPerRequest = 12;
 
   bool get connected => _connected;
   String get lastError => _lastError;
@@ -66,7 +66,7 @@ class ModbusService extends ChangeNotifier {
     _registerCache.clear();
     _activeAlarms.clear();
     notifyListeners();
-    print('✅ disconnect: отключено');
+    LoggerService().log('✅ disconnect: отключено');
   }
 
   Uint8List _buildModbusRequest(
@@ -140,7 +140,7 @@ class ModbusService extends ChangeNotifier {
     Socket? tempSocket;
 
     try {
-      print('📤 Отправка запроса...');
+      LoggerService().log('📤 Отправка запроса...');
 
       tempSocket = await Socket.connect(
         _ip,
@@ -156,27 +156,36 @@ class ModbusService extends ChangeNotifier {
 
       final subscription = tempSocket.listen(
         (data) {
-          print('📥 Получено ${data.length} байт');
+          LoggerService().log(
+            '📥 Получено ${data.length} байт',
+            level: LogLevel.debug,
+          );
           responseData.addAll(data);
 
           if (responseData.length >= 8) {
             final length = (responseData[4] << 8) | responseData[5];
             if (responseData.length >= 6 + length) {
               if (!completer.isCompleted) {
-                print('✅ Полный ответ получен (${responseData.length} байт)');
+                LoggerService().log(
+                  '✅ Полный ответ получен (${responseData.length} байт)',
+                  level: LogLevel.debug,
+                );
                 completer.complete(Uint8List.fromList(responseData));
               }
             }
           }
         },
         onError: (e) {
-          print('❌ Ошибка приема данных: $e');
+          LoggerService().log(
+            '❌ Ошибка приема данных: $e',
+            level: LogLevel.error,
+          );
           if (!completer.isCompleted) {
             completer.completeError(e);
           }
         },
         onDone: () {
-          print('📭 Соединение закрыто');
+          LoggerService().log('📭 Соединение закрыто', level: LogLevel.debug);
           if (!completer.isCompleted) {
             completer.completeError(TimeoutException('Соединение закрыто'));
           }
@@ -187,8 +196,11 @@ class ModbusService extends ChangeNotifier {
       if (_timeout > 0) {
         timer = Timer(Duration(seconds: _timeout), () {
           if (!completer.isCompleted) {
-            print('⏰ Таймаут ${_timeout}с');
-            completer.completeError(TimeoutException('Таймаут ${_timeout}с'));
+            LoggerService().log(
+              '⏰ Таймаут $_timeoutс',
+              level: LogLevel.warning,
+            );
+            completer.completeError(TimeoutException('Таймаут $_timeoutс'));
           }
         });
       }
@@ -207,26 +219,32 @@ class ModbusService extends ChangeNotifier {
       }
     } on TimeoutException catch (e) {
       _lastError = e.toString();
-      print('❌ _sendRequest: таймаут: $e');
+      LoggerService().log('❌ _sendRequest: таймаут: $e', level: LogLevel.error);
       await tempSocket?.close();
       return null;
     } catch (e) {
       _lastError = e.toString();
-      print('❌ _sendRequest: ошибка: $e');
+      LoggerService().log('❌ _sendRequest: ошибка: $e', level: LogLevel.error);
       await tempSocket?.close();
       return null;
     }
   }
 
   Future<List<int>?> _readHoldingRegisters(int address, int count) async {
-    print('🔵 _readHoldingRegisters: адрес=$address, кол-во=$count');
+    LoggerService().log(
+      '🔵 _readHoldingRegisters: адрес=$address, кол-во=$count',
+      level: LogLevel.debug,
+    );
 
     try {
       final request = _buildModbusRequest(3, address, count: count);
       final response = await _sendRequest(request);
 
       if (response == null || response.length < 9) {
-        print('❌ _readHoldingRegisters: пустой ответ или слишком короткий');
+        LoggerService().log(
+          '❌ _readHoldingRegisters: пустой ответ или слишком короткий',
+          level: LogLevel.warning,
+        );
         return null;
       }
 
@@ -235,11 +253,15 @@ class ModbusService extends ChangeNotifier {
         final errorCode = functionCode & 0x80;
         if (errorCode != 0) {
           _lastError = 'Ошибка Modbus: код ${response[8]}';
-          print('❌ _readHoldingRegisters: ошибка Modbus, код ${response[8]}');
+          LoggerService().log(
+            '❌ _readHoldingRegisters: ошибка Modbus, код ${response[8]}',
+            level: LogLevel.error,
+          );
         } else {
           _lastError = 'Неожиданный код функции: $functionCode';
-          print(
+          LoggerService().log(
             '❌ _readHoldingRegisters: неожиданный код функции: $functionCode',
+            level: LogLevel.error,
           );
         }
         return null;
@@ -250,18 +272,27 @@ class ModbusService extends ChangeNotifier {
       for (int i = 0; i < dataLength ~/ 2; i++) {
         final reg = (response[9 + i * 2] << 8) | response[10 + i * 2];
         registers.add(reg);
-        print('📊 Регистр ${address + i} = $reg');
+        LoggerService().log(
+          '📊 Регистр ${address + i} = $reg',
+          level: LogLevel.debug,
+        );
       }
 
       for (int i = 0; i < registers.length; i++) {
         _registerCache[address + i] = registers[i];
       }
 
-      print('✅ _readHoldingRegisters: прочитано ${registers.length} регистров');
+      LoggerService().log(
+        '✅ _readHoldingRegisters: прочитано ${registers.length} регистров',
+        level: LogLevel.debug,
+      );
       return registers;
     } catch (e) {
       _lastError = e.toString();
-      print('❌ _readHoldingRegisters: ошибка: $e');
+      LoggerService().log(
+        '❌ _readHoldingRegisters: ошибка: $e',
+        level: LogLevel.error,
+      );
       return null;
     }
   }
@@ -288,7 +319,7 @@ class ModbusService extends ChangeNotifier {
       } else if (addr - currentGroup.last <= 1) {
         final start = currentGroup.first;
         final count = addr - start + 1;
-        if (count <= MAX_REGISTERS_PER_REQUEST) {
+        if (count <= maxRegistersPerRequest) {
           currentGroup.add(addr);
         } else {
           groups.add(List<int>.from(currentGroup));
@@ -311,7 +342,7 @@ class ModbusService extends ChangeNotifier {
       final count = end - start + 1;
 
       LoggerService().log(
-        '📖 Групповое чтение: адреса $start - $end (${count} регистров)',
+        '📖 Групповое чтение: адреса $start - $end ($count регистров)',
       );
       //print('📖 Групповое чтение: адреса $start - $end (${count} регистров)');
 
@@ -359,7 +390,7 @@ class ModbusService extends ChangeNotifier {
         if (addr == lastAddr + 1) {
           final start = currentGroup.first;
           final newRegisterCount = ((addr - start) * 2) + 2;
-          if (newRegisterCount <= MAX_REGISTERS_PER_REQUEST) {
+          if (newRegisterCount <= maxRegistersPerRequest) {
             currentGroup.add(addr);
           } else {
             groups.add(List<int>.from(currentGroup));
@@ -375,17 +406,24 @@ class ModbusService extends ChangeNotifier {
       groups.add(currentGroup);
     }
 
-    print('🔵 Сформировано ${groups.length} групп для чтения float');
+    LoggerService().log(
+      '🔵 Сформировано ${groups.length} групп для чтения float',
+      level: LogLevel.debug,
+    );
 
     for (final group in groups) {
       final start = group.first;
       final end = group.last;
       final registerCount = (end - start + 1) * 2;
 
-      print(
+      LoggerService().log(
         '📖 Групповое чтение float: start=$start, end=$end, регистров=$registerCount',
+        level: LogLevel.debug,
       );
-      print('   Float адреса в группе: $group');
+      LoggerService().log(
+        '   Float адреса в группе: $group',
+        level: LogLevel.debug,
+      );
 
       final registers = await _readHoldingRegisters(start, registerCount);
 
@@ -409,13 +447,19 @@ class ModbusService extends ChangeNotifier {
 
             final roundedValue = double.parse(value.toStringAsFixed(1));
             result[addr] = roundedValue;
-            print('✅ Адрес $addr = $roundedValue');
+            LoggerService().log(
+              '✅ Адрес $addr = $roundedValue',
+              level: LogLevel.debug,
+            );
           }
         }
       }
     }
 
-    print('✅ readMultipleFloats: получено ${result.length} значений');
+    LoggerService().log(
+      '✅ readMultipleFloats: получено ${result.length} значений',
+      level: LogLevel.debug,
+    );
     return result;
   }
 
@@ -425,7 +469,10 @@ class ModbusService extends ChangeNotifier {
     Map<int, dynamic> values, {
     String type = 'int',
   }) async {
-    print('🔵 writeMultipleRegisters: ${values.length} параметров');
+    LoggerService().log(
+      '🔵 writeMultipleRegisters: ${values.length} параметров',
+      level: LogLevel.debug,
+    );
 
     if (!_connected || values.isEmpty) {
       return {};
@@ -454,8 +501,9 @@ class ModbusService extends ChangeNotifier {
       results.addAll(floatResults);
     }
 
-    print(
+    LoggerService().log(
       '✅ writeMultipleRegisters: записано ${results.values.where((v) => v).length} из ${results.length}',
+      level: LogLevel.debug,
     );
     return results;
   }
@@ -478,7 +526,7 @@ class ModbusService extends ChangeNotifier {
         if (addr == lastAddr + 1) {
           final start = currentGroup.first;
           final count = addr - start + 1;
-          if (count <= MAX_REGISTERS_PER_REQUEST) {
+          if (count <= maxRegistersPerRequest) {
             currentGroup.add(addr);
           } else {
             groups.add(List<int>.from(currentGroup));
@@ -494,7 +542,10 @@ class ModbusService extends ChangeNotifier {
       groups.add(currentGroup);
     }
 
-    print('🔵 Сформировано ${groups.length} групп для записи int');
+    LoggerService().log(
+      '🔵 Сформировано ${groups.length} групп для записи int',
+      level: LogLevel.debug,
+    );
 
     for (final group in groups) {
       if (group.length == 1) {
@@ -504,7 +555,10 @@ class ModbusService extends ChangeNotifier {
         if (success) {
           _registerCache[addr] = values[addr] ?? 0;
         }
-        print('📝 Одиночная запись адрес $addr: ${success ? "✅" : "❌"}');
+        LoggerService().log(
+          '📝 Одиночная запись адрес $addr: ${success ? "✅" : "❌"}',
+          level: LogLevel.debug,
+        );
         continue;
       }
 
@@ -512,8 +566,9 @@ class ModbusService extends ChangeNotifier {
       final end = group.last;
       final count = end - start + 1;
 
-      print(
-        '📝 Групповая запись int: адреса $start - $end (${count} регистров)',
+      LoggerService().log(
+        '📝 Групповая запись int: адреса $start - $end ($count регистров)',
+        level: LogLevel.debug,
       );
 
       final valuesToWrite = <int>[];
@@ -521,7 +576,10 @@ class ModbusService extends ChangeNotifier {
         final addr = start + i;
         if (values.containsKey(addr)) {
           valuesToWrite.add(values[addr]!);
-          print('   📝 Адрес $addr = ${values[addr]} (изменен)');
+          LoggerService().log(
+            '   📝 Адрес $addr = ${values[addr]} (изменен)',
+            level: LogLevel.debug,
+          );
         } else {
           int currentValue = _registerCache[addr] ?? 0;
           if (!_registerCache.containsKey(addr)) {
@@ -529,7 +587,10 @@ class ModbusService extends ChangeNotifier {
             currentValue = readValue ?? 0;
           }
           valuesToWrite.add(currentValue);
-          print('   📝 Адрес $addr = $currentValue (промежуточный)');
+          LoggerService().log(
+            '   📝 Адрес $addr = $currentValue (промежуточный)',
+            level: LogLevel.debug,
+          );
         }
       }
 
@@ -542,7 +603,10 @@ class ModbusService extends ChangeNotifier {
         }
       }
 
-      print('📝 Группа ${group.first}-${group.last}: ${success ? "✅" : "❌"}');
+      LoggerService().log(
+        '📝 Группа ${group.first}-${group.last}: ${success ? "✅" : "❌"}',
+        level: LogLevel.debug,
+      );
     }
 
     return results;
@@ -567,7 +631,7 @@ class ModbusService extends ChangeNotifier {
         if (addr == lastAddr + 1) {
           final start = currentGroup.first;
           final newRegisterCount = ((addr - start) * 2) + 2;
-          if (newRegisterCount <= MAX_REGISTERS_PER_REQUEST) {
+          if (newRegisterCount <= maxRegistersPerRequest) {
             currentGroup.add(addr);
           } else {
             groups.add(List<int>.from(currentGroup));
@@ -583,7 +647,10 @@ class ModbusService extends ChangeNotifier {
       groups.add(currentGroup);
     }
 
-    print('🔵 Сформировано ${groups.length} групп для записи float');
+    LoggerService().log(
+      '🔵 Сформировано ${groups.length} групп для записи float',
+      level: LogLevel.debug,
+    );
 
     for (final group in groups) {
       if (group.length == 1) {
@@ -593,13 +660,17 @@ class ModbusService extends ChangeNotifier {
         if (success) {
           _registerCache[addr] = values[addr]?.toInt() ?? 0;
         }
-        print('📝 Одиночная запись float адрес $addr: ${success ? "✅" : "❌"}');
+        LoggerService().log(
+          '📝 Одиночная запись float адрес $addr: ${success ? "✅" : "❌"}',
+          level: LogLevel.debug,
+        );
       } else {
         final start = group.first;
         final floatValues = group.map((addr) => values[addr]!).toList();
 
-        print(
+        LoggerService().log(
           '📝 Групповая запись float: адреса ${group.first}-${group.last} (${floatValues.length} значений)',
+          level: LogLevel.debug,
         );
 
         final success = await _writeMultipleFloatsRaw(start, floatValues);
@@ -611,7 +682,10 @@ class ModbusService extends ChangeNotifier {
           }
         }
 
-        print('📝 Группа ${group.first}-${group.last}: ${success ? "✅" : "❌"}');
+        LoggerService().log(
+          '📝 Группа ${group.first}-${group.last}: ${success ? "✅" : "❌"}',
+          level: LogLevel.debug,
+        );
       }
     }
 
@@ -622,10 +696,11 @@ class ModbusService extends ChangeNotifier {
     int startAddress,
     List<int> values,
   ) async {
-    print(
+    LoggerService().log(
       '🔵 _writeMultipleRegistersRaw: адрес=$startAddress, кол-во=${values.length}',
+      level: LogLevel.debug,
     );
-    print('   Значения: $values');
+    LoggerService().log('   Значения: $values', level: LogLevel.debug);
 
     try {
       final request = _buildModbusRequest(
@@ -637,7 +712,10 @@ class ModbusService extends ChangeNotifier {
       final response = await _sendRequest(request);
 
       if (response == null || response.length < 8) {
-        print('❌ _writeMultipleRegistersRaw: пустой ответ');
+        LoggerService().log(
+          '❌ _writeMultipleRegistersRaw: пустой ответ',
+          level: LogLevel.warning,
+        );
         return false;
       }
 
@@ -645,8 +723,9 @@ class ModbusService extends ChangeNotifier {
         final errorCode = response[7] & 0x80;
         if (errorCode != 0) {
           _lastError = 'Ошибка Modbus: код ${response[8]}';
-          print(
+          LoggerService().log(
             '❌ _writeMultipleRegistersRaw: ошибка Modbus, код ${response[8]}',
+            level: LogLevel.error,
           );
         }
         return false;
@@ -656,11 +735,17 @@ class ModbusService extends ChangeNotifier {
         _registerCache[startAddress + i] = values[i];
       }
 
-      print('✅ _writeMultipleRegistersRaw: запись успешна');
+      LoggerService().log(
+        '✅ _writeMultipleRegistersRaw: запись успешна',
+        level: LogLevel.debug,
+      );
       return true;
     } catch (e) {
       _lastError = e.toString();
-      print('❌ _writeMultipleRegistersRaw: ошибка: $e');
+      LoggerService().log(
+        '❌ _writeMultipleRegistersRaw: ошибка: $e',
+        level: LogLevel.error,
+      );
       return false;
     }
   }
@@ -671,8 +756,9 @@ class ModbusService extends ChangeNotifier {
     int startAddress,
     List<double> values,
   ) async {
-    print(
+    LoggerService().log(
       '🔵 _writeMultipleFloatsRaw: адрес=$startAddress, кол-во=${values.length}',
+      level: LogLevel.debug,
     );
 
     final registers = <int>[];
@@ -688,19 +774,28 @@ class ModbusService extends ChangeNotifier {
       registers.add(hiReg);
     }
 
-    print('   Регистры для записи: $registers');
+    LoggerService().log(
+      '   Регистры для записи: $registers',
+      level: LogLevel.debug,
+    );
     return await _writeMultipleRegistersRaw(startAddress, registers);
   }
 
   Future<bool> _writeSingleRegister(int address, int value) async {
-    print('🔵 _writeSingleRegister: адрес=$address, значение=$value');
+    LoggerService().log(
+      '🔵 _writeSingleRegister: адрес=$address, значение=$value',
+      level: LogLevel.debug,
+    );
 
     try {
       final request = _buildModbusRequest(6, address, value: value);
       final response = await _sendRequest(request);
 
       if (response == null || response.length < 8) {
-        print('❌ _writeSingleRegister: пустой ответ');
+        LoggerService().log(
+          '❌ _writeSingleRegister: пустой ответ',
+          level: LogLevel.warning,
+        );
         return false;
       }
 
@@ -708,17 +803,26 @@ class ModbusService extends ChangeNotifier {
         final errorCode = response[7] & 0x80;
         if (errorCode != 0) {
           _lastError = 'Ошибка Modbus: код ${response[8]}';
-          print('❌ _writeSingleRegister: ошибка Modbus, код ${response[8]}');
+          LoggerService().log(
+            '❌ _writeSingleRegister: ошибка Modbus, код ${response[8]}',
+            level: LogLevel.error,
+          );
         }
         return false;
       }
 
       _registerCache[address] = value;
-      print('✅ _writeSingleRegister: запись успешна');
+      LoggerService().log(
+        '✅ _writeSingleRegister: запись успешна',
+        level: LogLevel.debug,
+      );
       return true;
     } catch (e) {
       _lastError = e.toString();
-      print('❌ _writeSingleRegister: ошибка: $e');
+      LoggerService().log(
+        '❌ _writeSingleRegister: ошибка: $e',
+        level: LogLevel.error,
+      );
       return false;
     }
   }
@@ -730,51 +834,76 @@ class ModbusService extends ChangeNotifier {
     int count = 1,
     String type = 'int',
   }) async {
-    print('🔵 readRegister: адрес=$address, тип=$type');
+    LoggerService().log(
+      '🔵 readRegister: адрес=$address, тип=$type',
+      level: LogLevel.debug,
+    );
 
     try {
       if (type == 'float') {
         final result = await readFloat(address);
-        print('📊 readRegister float результат для $address: $result');
+        LoggerService().log(
+          '📊 readRegister float результат для $address: $result',
+          level: LogLevel.debug,
+        );
         return result?.toInt();
       }
 
       final registers = await _readHoldingRegisters(address, count);
       if (registers == null || registers.isEmpty) {
-        print('❌ readRegister: не удалось прочитать регистр $address');
+        LoggerService().log(
+          '❌ readRegister: не удалось прочитать регистр $address',
+          level: LogLevel.warning,
+        );
         return null;
       }
 
-      print('📊 readRegister получены регистры для $address: $registers');
+      LoggerService().log(
+        '📊 readRegister получены регистры для $address: $registers',
+        level: LogLevel.debug,
+      );
 
       if (type == 'bool') {
         final result = registers[0] & 0x01;
-        print('📊 readRegister bool результат: $result');
+        LoggerService().log(
+          '📊 readRegister bool результат: $result',
+          level: LogLevel.debug,
+        );
         return result;
       }
 
-      print('📊 readRegister int результат: ${registers[0]}');
+      LoggerService().log(
+        '📊 readRegister int результат: ${registers[0]}',
+        level: LogLevel.debug,
+      );
       return registers[0];
     } catch (e) {
-      print('❌ readRegister ошибка: $e');
+      LoggerService().log('❌ readRegister ошибка: $e', level: LogLevel.error);
       _lastError = e.toString();
       return null;
     }
   }
 
   Future<double?> readFloat(int address) async {
-    print('🔵 readFloat: адрес=$address');
+    LoggerService().log('🔵 readFloat: адрес=$address', level: LogLevel.debug);
 
     try {
-      print('📖 Читаю float с адреса $address');
+      LoggerService().log(
+        '📖 Читаю float с адреса $address',
+        level: LogLevel.debug,
+      );
       final registers = await _readHoldingRegisters(address, 2);
       if (registers == null || registers.length < 2) {
-        print('❌ readFloat: не получены регистры для $address');
+        LoggerService().log(
+          '❌ readFloat: не получены регистры для $address',
+          level: LogLevel.warning,
+        );
         return null;
       }
 
-      print(
+      LoggerService().log(
         '📊 Получены регистры: [${registers[0]}] (0x${registers[0].toRadixString(16)}), [${registers[1]}] (0x${registers[1].toRadixString(16)})',
+        level: LogLevel.debug,
       );
 
       final loByte0 = registers[0] & 0xFF;
@@ -787,10 +916,16 @@ class ModbusService extends ChangeNotifier {
       final value = byteData.getFloat32(0, Endian.little);
 
       final result = double.parse(value.toStringAsFixed(1));
-      print('✅ Float значение для $address: $result');
+      LoggerService().log(
+        '✅ Float значение для $address: $result',
+        level: LogLevel.debug,
+      );
       return result;
     } catch (e) {
-      print('❌ Ошибка чтения float $address: $e');
+      LoggerService().log(
+        '❌ Ошибка чтения float $address: $e',
+        level: LogLevel.error,
+      );
       _lastError = e.toString();
       return null;
     }
@@ -801,7 +936,10 @@ class ModbusService extends ChangeNotifier {
     dynamic value, {
     String type = 'int',
   }) async {
-    print('🔵 writeRegister: адрес=$address, значение=$value, тип=$type');
+    LoggerService().log(
+      '🔵 writeRegister: адрес=$address, значение=$value, тип=$type',
+      level: LogLevel.debug,
+    );
 
     try {
       if (type == 'float') {
@@ -813,30 +951,48 @@ class ModbusService extends ChangeNotifier {
         final loReg = (bytes[1] << 8) | bytes[0];
         final hiReg = (bytes[3] << 8) | bytes[2];
 
-        print('🔵 writeRegister float: loReg=$loReg, hiReg=$hiReg');
+        LoggerService().log(
+          '🔵 writeRegister float: loReg=$loReg, hiReg=$hiReg',
+          level: LogLevel.debug,
+        );
 
         final success1 = await _writeSingleRegister(address, loReg);
         if (!success1) {
-          print('❌ writeRegister: не удалось записать младший регистр');
+          LoggerService().log(
+            '❌ writeRegister: не удалось записать младший регистр',
+            level: LogLevel.error,
+          );
           return false;
         }
         final success2 = await _writeSingleRegister(address + 1, hiReg);
         if (!success2) {
-          print('❌ writeRegister: не удалось записать старший регистр');
+          LoggerService().log(
+            '❌ writeRegister: не удалось записать старший регистр',
+            level: LogLevel.error,
+          );
           return false;
         }
-        print('✅ writeRegister: float записан успешно');
+        LoggerService().log(
+          '✅ writeRegister: float записан успешно',
+          level: LogLevel.debug,
+        );
         return success2;
       } else {
         final intValue = int.parse(value.toString());
-        print('🔵 writeRegister int: запись $intValue в адрес $address');
+        LoggerService().log(
+          '🔵 writeRegister int: запись $intValue в адрес $address',
+          level: LogLevel.debug,
+        );
         final result = await _writeSingleRegister(address, intValue);
-        print('✅ writeRegister: результат записи = $result');
+        LoggerService().log(
+          '✅ writeRegister: результат записи = $result',
+          level: LogLevel.debug,
+        );
         return result;
       }
     } catch (e) {
       _lastError = e.toString();
-      print('❌ writeRegister ошибка: $e');
+      LoggerService().log('❌ writeRegister ошибка: $e', level: LogLevel.error);
       return false;
     }
   }
@@ -870,12 +1026,16 @@ class ModbusService extends ChangeNotifier {
       }
 
       final binaryString = value.toRadixString(2).padLeft(16, '0');
-      print('📊 readAlarms: регистр $address = $value (0b$binaryString)');
+      LoggerService().log(
+        '📊 readAlarms: регистр $address = $value (0b$binaryString)',
+        level: LogLevel.debug,
+      );
 
       for (final alarm in alarms) {
         final isActive = (value & (1 << alarm.bit)) != 0;
-        print(
+        LoggerService().log(
           '  🔍 Бит ${alarm.bit} (${alarm.name}): ${isActive ? "АКТИВЕН" : "не активен"}',
+          level: LogLevel.debug,
         );
 
         if (isActive) {
@@ -914,13 +1074,17 @@ class ModbusService extends ChangeNotifier {
   }
 
   Future<dynamic> readParameterValue(ItemConfig param) async {
-    print(
+    LoggerService().log(
       '🔵 readParameterValue: ${param.name}, адрес=${param.address}, тип=${param.type}',
+      level: LogLevel.debug,
     );
 
     if (param.type == 'float') {
       final result = await readFloat(param.address);
-      print('📊 readParameterValue: результат = $result');
+      LoggerService().log(
+        '📊 readParameterValue: результат = $result',
+        level: LogLevel.debug,
+      );
       return result;
     } else {
       final result = await readRegister(
@@ -928,7 +1092,10 @@ class ModbusService extends ChangeNotifier {
         count: 1,
         type: param.type,
       );
-      print('📊 readParameterValue: результат = $result');
+      LoggerService().log(
+        '📊 readParameterValue: результат = $result',
+        level: LogLevel.debug,
+      );
       return result;
     }
   }

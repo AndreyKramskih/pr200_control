@@ -677,6 +677,8 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
         '🔵 Сохранение ${changedValues.length} измененных параметров...)',
       );
 
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      final navigator = Navigator.of(context);
       final confirm = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
@@ -697,7 +699,7 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
                     style: const TextStyle(fontSize: 14),
                   ),
                 );
-              }).toList(),
+              }),
               if (changedValues.length > 10)
                 Text('... и еще ${changedValues.length - 10} параметров'),
             ],
@@ -716,7 +718,13 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
         ),
       );
 
-      if (confirm != true || !mounted || !_active) return;
+      if (!mounted || !_active || confirm != true) return;
+      if (mounted) {
+        navigator.pop();
+      }
+      messenger?.showSnackBar(
+        const SnackBar(content: Text('Параметры сохранены')),
+      );
 
       final intValues = <int, int>{};
       final floatValues = <int, double>{};

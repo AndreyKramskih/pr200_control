@@ -13,34 +13,32 @@ class AppException implements Exception {
 
 /// Ошибка подключения к Modbus
 class ModbusConnectionException extends AppException {
-  ModbusConnectionException(String message, {dynamic originalError})
+  ModbusConnectionException(super.message, {super.originalError})
     : super(
-        message,
         code: 'MODBUS_CONNECTION_ERROR',
-        originalError: originalError,
       );
 }
 
 /// Ошибка чтения Modbus
 class ModbusReadException extends AppException {
-  ModbusReadException(String message, {dynamic originalError})
-    : super(message, code: 'MODBUS_READ_ERROR', originalError: originalError);
+  ModbusReadException(super.message, {super.originalError})
+    : super(code: 'MODBUS_READ_ERROR');
 }
 
 /// Ошибка записи Modbus
 class ModbusWriteException extends AppException {
-  ModbusWriteException(String message, {dynamic originalError})
-    : super(message, code: 'MODBUS_WRITE_ERROR', originalError: originalError);
+  ModbusWriteException(super.message, {super.originalError})
+    : super(code: 'MODBUS_WRITE_ERROR');
 }
 
 /// Ошибка валидации
 class ValidationException extends AppException {
-  ValidationException(String message, {dynamic originalError})
-    : super(message, code: 'VALIDATION_ERROR', originalError: originalError);
+  ValidationException(super.message, {super.originalError})
+    : super(code: 'VALIDATION_ERROR');
 }
 
 /// Ошибка конфигурации
 class ConfigException extends AppException {
-  ConfigException(String message, {dynamic originalError})
-    : super(message, code: 'CONFIG_ERROR', originalError: originalError);
+  ConfigException(super.message, {super.originalError})
+    : super(code: 'CONFIG_ERROR');
 }

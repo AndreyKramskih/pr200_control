@@ -19,7 +19,9 @@ class SensorWidget extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       elevation: 2,
       color: isSetpoint
-          ? (isDark ? Colors.blue[900]?.withOpacity(0.3) : Colors.blue[50])
+          ? (isDark
+                ? Colors.blue[900]?.withValues(alpha: 0.3)
+                : Colors.blue[50])
           : ThemeUtils.cardColor(context),
       child: Padding(
         padding: const EdgeInsets.all(16),

@@ -101,6 +101,7 @@ class _CloudConnectionScreenState extends State<CloudConnectionScreen> {
   Future<void> _connect() async {
     final modbus = Provider.of<ModbusService>(context, listen: false);
     final rtu = Provider.of<ModbusRtuService>(context, listen: false);
+    final messenger = ScaffoldMessenger.maybeOf(context);
 
     // ✅ Гасим только ЛОКАЛЬНЫЕ каналы (TCP/RTU),
     //    Cloud НЕ отключаем — мы как раз к нему подключаемся
@@ -144,6 +145,14 @@ class _CloudConnectionScreenState extends State<CloudConnectionScreen> {
     );
 
     if (!ok) {
+      if (mounted) {
+        messenger?.showSnackBar(
+          SnackBar(
+            content: Text('❌ ${service.lastError}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
       setState(() {
         _connecting = false;
         _status = '❌ ${service.lastError}';
@@ -349,7 +358,7 @@ class _CloudConnectionScreenState extends State<CloudConnectionScreen> {
               if (_devices.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 DropdownButtonFormField<int>(
-                  value: int.tryParse(_deviceIdCtrl.text),
+                  initialValue: int.tryParse(_deviceIdCtrl.text),
                   decoration: const InputDecoration(
                     labelText: 'Выберите устройство',
                     border: OutlineInputBorder(),
@@ -531,7 +540,7 @@ class _CloudConnectionScreenState extends State<CloudConnectionScreen> {
                     ),
                   ),
                   style: OutlinedButton.styleFrom(
-                    backgroundColor: Colors.red.withOpacity(0.06),
+                    backgroundColor: Colors.red.withValues(alpha: 0.06),
                     side: const BorderSide(color: Colors.red, width: 1.5),
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
@@ -547,9 +556,11 @@ class _CloudConnectionScreenState extends State<CloudConnectionScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _statusColor.withOpacity(0.1),
+                    color: _statusColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: _statusColor.withOpacity(0.4)),
+                    border: Border.all(
+                      color: _statusColor.withValues(alpha: 0.4),
+                    ),
                   ),
                   child: Text(
                     _status,

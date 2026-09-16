@@ -53,13 +53,13 @@ class AlarmsWidget extends StatelessWidget {
             return Card(
               margin: const EdgeInsets.only(bottom: 8),
               color: isDark
-                  ? Colors.red[900]?.withOpacity(0.3)
+                  ? Colors.red[900]?.withValues(alpha: 0.3)
                   : Colors.red[50],
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
                 side: BorderSide(
                   color: isDark
-                      ? Colors.red[400]!.withOpacity(0.5)
+                      ? Colors.red[400]!.withValues(alpha: 0.5)
                       : Colors.red[300]!,
                   width: 1,
                 ),
@@ -96,7 +96,7 @@ class AlarmsWidget extends StatelessWidget {
                 ),
               ),
             );
-          }).toList(),
+          }),
           const SizedBox(height: 16),
           if (submenu.resetAddress != null)
             ElevatedButton.icon(

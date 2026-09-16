@@ -45,10 +45,10 @@ class StartStopWidget extends StatelessWidget {
                   shape: BoxShape.circle,
                   color: isOn
                       ? (isDark
-                            ? Colors.green[800]?.withOpacity(0.5)
+                            ? Colors.green[800]?.withValues(alpha: 0.5)
                             : Colors.green[100])
                       : (isDark
-                            ? Colors.red[800]?.withOpacity(0.5)
+                            ? Colors.red[800]?.withValues(alpha: 0.5)
                             : Colors.red[100]),
                   border: Border.all(
                     color: isOn ? Colors.green : Colors.red,
@@ -56,8 +56,8 @@ class StartStopWidget extends StatelessWidget {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: (isOn ? Colors.green : Colors.red).withOpacity(
-                        0.3,
+                      color: (isOn ? Colors.green : Colors.red).withValues(
+                        alpha: 0.3,
                       ),
                       blurRadius: 20,
                       spreadRadius: 5,

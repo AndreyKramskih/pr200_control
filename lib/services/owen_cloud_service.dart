@@ -208,7 +208,7 @@ class OwenCloudService extends ChangeNotifier {
         waitSec = int.tryParse(retryAfter) ?? waitSec;
       }
       LoggerService().log(
-        '⚠️ Owen Cloud 429, повтор через ${waitSec}с (попытка $attempt)',
+        '⚠️ Owen Cloud 429, повтор через $waitSecс (попытка $attempt)',
         level: LogLevel.warning,
       );
       await Future.delayed(Duration(seconds: waitSec));

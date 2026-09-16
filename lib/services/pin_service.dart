@@ -11,8 +11,8 @@ class PinService {
   PinService._internal();
 
   static const String _pinFileName = 'pin_code.txt';
-  static const int MAX_ATTEMPTS = 3;
-  static const Duration LOCKOUT_DURATION = Duration(minutes: 5);
+  static const int maxAttempts = 3;
+  static const Duration lockoutDuration = Duration(minutes: 5);
 
   String? _cachedPin;
   int _failedAttempts = 0;
@@ -20,7 +20,7 @@ class PinService {
 
   bool get isLocked =>
       _lockoutUntil != null && DateTime.now().isBefore(_lockoutUntil!);
-  int get remainingAttempts => MAX_ATTEMPTS - _failedAttempts;
+  int get remainingAttempts => maxAttempts - _failedAttempts;
   DateTime? get lockoutUntil => _lockoutUntil;
 
   /// Получить директорию для хранения
@@ -86,14 +86,14 @@ class PinService {
     if (!isValid) {
       _failedAttempts++;
       LoggerService().log(
-        '❌ Неверный PIN-код (попытка $_failedAttempts из $MAX_ATTEMPTS)',
+        '❌ Неверный PIN-код (попытка $_failedAttempts из $maxAttempts)',
         level: LogLevel.warning,
       );
 
-      if (_failedAttempts >= MAX_ATTEMPTS) {
-        _lockoutUntil = DateTime.now().add(LOCKOUT_DURATION);
+      if (_failedAttempts >= maxAttempts) {
+        _lockoutUntil = DateTime.now().add(lockoutDuration);
         LoggerService().log(
-          '🔒 Превышено число попыток, блокировка на ${LOCKOUT_DURATION.inMinutes} минут',
+          '🔒 Превышено число попыток, блокировка на ${lockoutDuration.inMinutes} минут',
           level: LogLevel.warning,
         );
       }

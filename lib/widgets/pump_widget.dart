@@ -1,7 +1,7 @@
 // lib/widgets/pump_widget.dart
 import 'package:flutter/material.dart';
 import '../models/config_model.dart';
-// import '../services/modbus_manager.dart'; // ❌ Удаляем – больше не нужен
+import '../services/logger_service.dart';
 
 class PumpWidget extends StatelessWidget {
   final ItemConfig item;
@@ -38,8 +38,9 @@ class PumpWidget extends StatelessWidget {
         item.modeStates != null &&
         item.modeStates!.isNotEmpty;
 
-    print(
+    LoggerService().log(
       '🔄 PumpWidget: ${item.name}, modeAddress=${item.modeAddress}, modeValue=$modeValue, pumpId=$pumpId',
+      level: LogLevel.debug,
     );
 
     return Card(
@@ -157,7 +158,10 @@ class PumpWidget extends StatelessWidget {
           return DropdownMenuItem<int>(value: index, child: Text(label));
         }).toList(),
         onTap: () {
-          print('🔽 Dropdown для ${item.name} открыт');
+          LoggerService().log(
+            '🔽 Dropdown для ${item.name} открыт',
+            level: LogLevel.debug,
+          );
           if (onDropdownOpen != null) {
             onDropdownOpen!();
           }
@@ -168,8 +172,9 @@ class PumpWidget extends StatelessWidget {
           final pumpName = item.name;
           final address = modeAddress;
 
-          print(
+          LoggerService().log(
             '🔵 Изменение режима: $pumpName -> ${modeStates[newValue]} (адрес $address)',
+            level: LogLevel.debug,
           );
 
           // Показываем уведомление

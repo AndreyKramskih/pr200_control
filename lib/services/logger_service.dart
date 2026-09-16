@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:permission_handler/permission_handler.dart';
 import '../core/constants/app_constants.dart';
 
@@ -50,7 +51,7 @@ class LoggerService {
       }
     }
 
-    _cleanupTimer = Timer.periodic(AppConstants.LOG_CLEANUP_INTERVAL, (_) {
+    _cleanupTimer = Timer.periodic(AppConstants.logCleanupInterval, (_) {
       _cleanupOldLogs();
     });
 
@@ -59,12 +60,12 @@ class LoggerService {
 
   void _cleanupOldLogs() {
     final now = DateTime.now();
-    final cutoff = now.subtract(AppConstants.LOG_RETENTION);
+    final cutoff = now.subtract(AppConstants.logRetention);
 
     _logs.retainWhere((entry) => entry.timestamp.isAfter(cutoff));
 
-    if (_logs.length > AppConstants.MAX_LOG_ENTRIES) {
-      _logs.removeRange(0, _logs.length - AppConstants.MAX_LOG_ENTRIES);
+    if (_logs.length > AppConstants.maxLogEntries) {
+      _logs.removeRange(0, _logs.length - AppConstants.maxLogEntries);
     }
   }
 
@@ -82,8 +83,8 @@ class LoggerService {
     _cleanupOldLogs();
     _notifyListeners();
 
-    // ✅ Всегда выводим в консоль для отладки
-    print(entry.toString());
+    // ✅ В debug-режиме выводим в консоль без нарушений lint'ов
+    debugPrint(entry.toString());
   }
 
   Future<void> clearLogs() async {

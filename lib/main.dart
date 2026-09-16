@@ -1,6 +1,5 @@
 // lib/main.dart
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show kDebugMode;
@@ -100,6 +99,12 @@ class MyAppState extends State<MyApp> {
     });
   }
 
+  @override
+  void dispose() {
+    LoggerService().dispose();
+    super.dispose();
+  }
+
   Future<void> _initLoggerThenLoad() async {
     // ✅ Сначала инициализируем логгер
     await _initLogger();
@@ -126,7 +131,7 @@ class MyAppState extends State<MyApp> {
       await LoggerService().init();
       LoggerService().log('🚀 Приложение запущено');
     } catch (e) {
-      print('⚠️ Ошибка логгера: $e');
+      LoggerService().log('⚠️ Ошибка логгера: $e', level: LogLevel.warning);
     }
   }
 

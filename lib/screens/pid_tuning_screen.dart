@@ -351,6 +351,7 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
     }
 
     final travelTime = double.tryParse(_travelTimeController.text) ?? 30;
+    final navigator = Navigator.of(context);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -383,6 +384,7 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
     );
 
     if (confirm != true || !mounted) return;
+    navigator.pop();
 
     setState(() {
       _isRunning = true;
@@ -442,7 +444,7 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
         }
 
         setState(() {
-          _statusMessage = '⏳ Открытие клапана (${openTime} сек)...';
+          _statusMessage = '⏳ Открытие клапана ($openTime сек)...';
         });
 
         await Future.delayed(Duration(seconds: openTime));
@@ -888,7 +890,7 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
       _delayTime = 0;
     }
 
-    LoggerService().log('📊 τ (задержка) = ${_delayTime} сек');
+    LoggerService().log('📊 τ (задержка) = $_delayTime сек');
 
     final targetChange = firstTemp + totalChange * 0.632;
     bool found = false;
@@ -905,7 +907,7 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
       _timeConstant = 1;
     }
 
-    LoggerService().log('📊 T (постоянная времени) = ${_timeConstant} сек');
+    LoggerService().log('📊 T (постоянная времени) = $_timeConstant сек');
 
     final K = _gainK!;
     final tau = _delayTime!;
@@ -1036,6 +1038,7 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
     }
 
     final typeText = isPi ? 'ПИ' : 'ПИД';
+    final navigator = Navigator.of(context);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1091,6 +1094,7 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
     );
 
     if (confirm != true || !mounted) return;
+    navigator.pop();
 
     final modbusManager = ModbusManager(context);
     if (!modbusManager.connected) {
@@ -1630,7 +1634,9 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: isDark ? Colors.blue[900]?.withOpacity(0.2) : Colors.blue[50],
+      color: isDark
+          ? Colors.blue[900]?.withValues(alpha: 0.2)
+          : Colors.blue[50],
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(

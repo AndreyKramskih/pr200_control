@@ -19,7 +19,7 @@ class ModbusManager {
   // ✅ Кеш
   final Map<int, CachedValue<int>> _intCache = {};
   final Map<int, CachedValue<double>> _floatCache = {};
-  static const Duration CACHE_LIFETIME = Duration(seconds: 2);
+  static const Duration cacheLifetime = Duration(seconds: 2);
 
   ModbusManager(this.context);
 
@@ -63,8 +63,9 @@ class ModbusManager {
 
     if (config.connectionType == 'cloud') return cloud.lastError;
     if (rtu.connected && rtu.lastError.isNotEmpty) return rtu.lastError;
-    if (modbus.connected && modbus.lastError.isNotEmpty)
+    if (modbus.connected && modbus.lastError.isNotEmpty) {
       return modbus.lastError;
+    }
     return rtu.lastError.isNotEmpty ? rtu.lastError : modbus.lastError;
   }
 
@@ -97,7 +98,7 @@ class ModbusManager {
 
   bool _isCacheValid<T>(CachedValue<T>? cached) {
     if (cached == null) return false;
-    return DateTime.now().difference(cached.timestamp) < CACHE_LIFETIME;
+    return DateTime.now().difference(cached.timestamp) < cacheLifetime;
   }
 
   int? _getCachedInt(int address) {

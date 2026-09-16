@@ -1,25 +1,25 @@
 /// Глобальные константы приложения
 class AppConstants {
   // Modbus
-  static const int DEFAULT_PORT = 502;
-  static const int DEFAULT_SLAVE_ID = 1;
-  static const int DEFAULT_TIMEOUT_SECONDS = 3;
-  static const int DEFAULT_RETRIES = 3;
+  static const int defaultPort = 502;
+  static const int defaultSlaveId = 1;
+  static const int defaultTimeoutSeconds = 3;
+  static const int defaultRetries = 3;
 
   // RTU
-  static const int DEFAULT_BAUD_RATE = 115200;
+  static const int defaultBaudRate = 115200;
 
   // БИТЫ
-  static const int MAX_REGISTERS_PER_REQUEST = 12;
+  static const int maxRegistersPerRequest = 12;
 
   // Логи
-  static const int MAX_LOG_ENTRIES = 500;
-  static const Duration LOG_CLEANUP_INTERVAL = Duration(seconds: 10);
-  static const Duration LOG_RETENTION = Duration(minutes: 5);
+  static const int maxLogEntries = 500;
+  static const Duration logCleanupInterval = Duration(seconds: 10);
+  static const Duration logRetention = Duration(minutes: 5);
 
   // Обновление данных
-  static const Duration UPDATE_INTERVAL = Duration(seconds: 1);
+  static const Duration updateInterval = Duration(seconds: 1);
 
   // Параметры
-  static const int MAX_TREND_POINTS = 60;
+  static const int maxTrendPoints = 60;
 }

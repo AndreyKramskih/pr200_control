@@ -105,11 +105,11 @@ class SettingsWidget extends StatelessWidget {
                     onSave: (newValue) => onParamSave(item, newValue),
                     onLoad: () => onParamLoad(item),
                   );
-                }).toList(),
+                }),
                 const SizedBox(height: 16),
               ],
             );
-          }).toList(),
+          }),
         ],
       ),
     );

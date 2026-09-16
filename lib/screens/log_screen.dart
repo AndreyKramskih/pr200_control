@@ -341,7 +341,10 @@ class _LogScreenState extends State<LogScreen> {
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
-                                        '${log.timestamp.toString().substring(0, 19)}',
+                                        log.timestamp.toString().substring(
+                                          0,
+                                          19,
+                                        ),
                                         style: TextStyle(
                                           fontSize: 10,
                                           color: isDark
@@ -400,11 +403,11 @@ class _LogScreenState extends State<LogScreen> {
   // ✅ МЕТОД "Поделиться" без неиспользуемых переменных
   void _shareLogs(BuildContext context) async {
     try {
-      // Получаем текст логов
+      final messenger = ScaffoldMessenger.maybeOf(context);
       final logText = LoggerService().getLogsText();
 
       if (logText.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger?.showSnackBar(
           const SnackBar(
             content: Text('Нет логов для отправки'),
             backgroundColor: Colors.orange,
@@ -431,8 +434,8 @@ class _LogScreenState extends State<LogScreen> {
       // Показываем диалог с выбором действия
       _showShareDialog(context, fullText);
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           SnackBar(content: Text('Ошибка: $e'), backgroundColor: Colors.red),
         );
       }
@@ -543,7 +546,7 @@ class _LogScreenState extends State<LogScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
+                color: color.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, color: color, size: 28),

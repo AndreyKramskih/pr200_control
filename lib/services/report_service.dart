@@ -3,6 +3,8 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+import 'logger_service.dart';
+
 class ReportService {
   static final ReportService _instance = ReportService._internal();
   factory ReportService() => _instance;
@@ -15,9 +17,12 @@ class ReportService {
     try {
       final fontData = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
       _font = pw.Font.ttf(fontData);
-      print('✅ Шрифт Roboto загружен');
+      LoggerService().log('✅ Шрифт Roboto загружен');
     } catch (e) {
-      print('⚠️ Ошибка загрузки шрифта: $e');
+      LoggerService().log(
+        '⚠️ Ошибка загрузки шрифта: $e',
+        level: LogLevel.warning,
+      );
       _font = null;
     }
   }
@@ -31,11 +36,11 @@ class ReportService {
     required Map<String, String> systemNames, // ✅ НОВЫЙ ПАРАМЕТР
     required DateTime reportTime,
   }) async {
-    print('📄 Генерация отчета...');
-    print('📊 Количество систем: ${systemData.length}');
+    LoggerService().log('📄 Генерация отчета...');
+    LoggerService().log('📊 Количество систем: ${systemData.length}');
 
     if (systemData.isEmpty) {
-      print('❌ Нет данных для отчета');
+      LoggerService().log('❌ Нет данных для отчета', level: LogLevel.warning);
       return;
     }
 
@@ -94,7 +99,7 @@ class ReportService {
       filename: 'Отчет_ИТП_$dateStr.pdf',
     );
 
-    print('✅ Отчет отправлен');
+    LoggerService().log('✅ Отчет отправлен');
   }
 
   // ==================== СТРАНИЦА 1 ====================
@@ -527,7 +532,9 @@ class ReportService {
       );
     }
 
-    print('  ✅ Добавлено $count параметров в систему $systemName');
+    LoggerService().log(
+      '  ✅ Добавлено $count параметров в систему $systemName',
+    );
 
     return widgets;
   }

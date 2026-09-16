@@ -138,8 +138,8 @@ class SystemScreen extends StatelessWidget {
                       end: Alignment.bottomRight,
                       colors: isDark
                           ? [
-                              Colors.blue[900]!.withOpacity(0.3),
-                              Colors.blue[800]!.withOpacity(0.2),
+                              Colors.blue[900]!.withValues(alpha: 0.3),
+                              Colors.blue[800]!.withValues(alpha: 0.2),
                             ]
                           : [Colors.blue[50]!, Colors.blue[100]!],
                     ),

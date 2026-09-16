@@ -529,7 +529,10 @@ class ModbusRtuService extends ChangeNotifier {
   // так как вызывается только из writeRegister, который уже захватил блокировку)
   Future<bool> _writeSingleRegister(int address, int value) async {
     try {
-      print('🔵 _writeSingleRegister: адрес=$address, значение=$value');
+      LoggerService().log(
+        '🔵 _writeSingleRegister: адрес=$address, значение=$value',
+        level: LogLevel.debug,
+      );
 
       final request = _buildModbusRequest(6, address, 1, value);
 

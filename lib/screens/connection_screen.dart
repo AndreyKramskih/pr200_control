@@ -145,6 +145,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
       });
 
       try {
+        final messenger = ScaffoldMessenger.maybeOf(context);
         config.modbusServer.ip = ip;
         config.modbusServer.port = port;
         config.modbusServer.slaveId = slaveId;
@@ -156,7 +157,6 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
         final configService = ConfigService();
         await configService.saveConfig(config);
 
-        // ✅ СОХРАНЯЕМ В АКТИВНЫЙ КОНФИГ
         await _saveToActiveConfig(config);
 
         setState(() {
@@ -166,7 +166,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
         });
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          messenger?.showSnackBar(
             const SnackBar(
               content: Text('✅ Настройки сохранены'),
               backgroundColor: Colors.green,
@@ -203,6 +203,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
       });
 
       try {
+        final messenger = ScaffoldMessenger.maybeOf(context);
         config.modbusServer.slaveId = slaveId;
         config.modbusServer.timeout = timeout;
 
@@ -218,7 +219,6 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
         final configService = ConfigService();
         await configService.saveConfig(config);
 
-        // ✅ СОХРАНЯЕМ В АКТИВНЫЙ КОНФИГ
         await _saveToActiveConfig(config);
 
         setState(() {
@@ -228,7 +228,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
         });
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          messenger?.showSnackBar(
             const SnackBar(
               content: Text('✅ RTU настройки сохранены'),
               backgroundColor: Colors.green,
@@ -514,46 +514,46 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
             const SizedBox(height: 8),
             Column(
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: RadioListTile<String>(
-                        title: const Text('TCP/IP'),
-                        value: 'tcp',
-                        groupValue: _connectionType,
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        onChanged: (v) {
-                          setState(() => _connectionType = v!);
-                        },
+                RadioGroup<String>(
+                  groupValue: _connectionType,
+                  onChanged: (v) {
+                    if (v == null) return;
+                    setState(() => _connectionType = v);
+                    if (v == 'rtu') {
+                      _scanUsbDevices();
+                    }
+                  },
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: RadioListTile<String>(
+                          title: const Text('TCP/IP'),
+                          value: 'tcp',
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
                       ),
-                    ),
-                    Expanded(
-                      child: RadioListTile<String>(
-                        title: const Text('RTU (USB)'),
-                        value: 'rtu',
-                        groupValue: _connectionType,
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        onChanged: (v) {
-                          setState(() => _connectionType = v!);
-                          _scanUsbDevices();
-                        },
+                      Expanded(
+                        child: RadioListTile<String>(
+                          title: const Text('RTU (USB)'),
+                          value: 'rtu',
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 RadioListTile<String>(
                   title: const Text('Owen Cloud'),
                   subtitle: const Text('Подключение через облако Owen'),
                   value: 'cloud',
-                  groupValue: _connectionType,
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                   secondary: const Icon(Icons.cloud, color: Colors.blue),
                   onChanged: (v) {
-                    setState(() => _connectionType = v!);
-                    // Открываем отдельный экран
+                    if (v == null) return;
+                    setState(() => _connectionType = v);
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -731,7 +731,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
             fillColor: isDark ? Colors.grey[800] : Colors.white,
           ),
           dropdownColor: isDark ? Colors.grey[800] : Colors.white,
-          value: _baudRate,
+          initialValue: _baudRate,
           items: _baudRates.map((rate) {
             return DropdownMenuItem<int>(
               value: rate,
@@ -838,7 +838,7 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.blue.withOpacity(0.3),
+                      color: Colors.blue.withValues(alpha: 0.3),
                       blurRadius: 20,
                       spreadRadius: 5,
                     ),
@@ -945,9 +945,11 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
                     horizontal: 16,
                   ),
                   decoration: BoxDecoration(
-                    color: _statusColor.withOpacity(0.1),
+                    color: _statusColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: _statusColor.withOpacity(0.3)),
+                    border: Border.all(
+                      color: _statusColor.withValues(alpha: 0.3),
+                    ),
                   ),
                   child: Row(
                     children: [

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show debugPrint;
 
 void main() async {
   // Находим корневую директорию проекта (на один уровень выше папки lib)
@@ -7,7 +8,7 @@ void main() async {
   final outputFile = File('$projectRoot/flutter_code_all.txt');
 
   if (!await libDir.exists()) {
-    print('Ошибка: Папка lib не найдена в текущей директории.');
+    debugPrint('Ошибка: Папка lib не найдена в текущей директории.');
     return;
   }
 
@@ -33,7 +34,7 @@ void main() async {
         }
       }
     }
-    print('Готово! Все файлы объединены в: ${outputFile.path}');
+    debugPrint('Готово! Все файлы объединены в: ${outputFile.path}');
   } finally {
     await sink.close();
   }

@@ -47,7 +47,7 @@ class RelayWidget extends StatelessWidget {
             // ✅ Используем ValueKey для предотвращения лишних перестроек
             Text(
               stateText,
-              key: ValueKey('${item.address}_${isOn}'),
+              key: ValueKey('${item.address}_$isOn'),
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.bold,

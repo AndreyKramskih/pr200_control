@@ -54,9 +54,12 @@ class ValveWidget extends StatelessWidget {
       for (final item in submenu.items!) {
         if (isAnalog) {
           if (item.name.contains('Текущее положение') &&
-              (item.readonly ?? false))
+              (item.readonly ?? false)) {
             continue;
-          if (item.isSetpoint == true) continue;
+          }
+          if (item.isSetpoint == true) {
+            continue;
+          }
         }
         final value = realtimeData[item.address.toString()];
         children.add(_buildValveItem(item, value, context));
@@ -181,10 +184,10 @@ class ValveWidget extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: isManual
                           ? (isDark
-                                ? Colors.orange[800]!.withOpacity(0.3)
+                                ? Colors.orange[800]!.withValues(alpha: 0.3)
                                 : Colors.orange[100])
                           : (isDark
-                                ? Colors.green[800]!.withOpacity(0.3)
+                                ? Colors.green[800]!.withValues(alpha: 0.3)
                                 : Colors.green[100]),
                       borderRadius: BorderRadius.circular(12),
                     ),

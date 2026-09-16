@@ -17,6 +17,7 @@ import '../main.dart';
 import '../services/connection_status.dart';
 import '../services/modbus_manager.dart';
 import '../screens/history_screen.dart';
+import '../services/logger_service.dart';
 
 class MainMenuScreen extends StatefulWidget {
   const MainMenuScreen({super.key});
@@ -43,7 +44,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
       final modbusManager = ModbusManager(context);
 
       if (!modbusManager.connected) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
           const SnackBar(
             content: Text('❌ Нет подключения к устройству'),
             backgroundColor: Colors.red,
@@ -52,6 +53,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
         return;
       }
 
+      final navigator = Navigator.of(context);
       showDialog(
         context: context,
         barrierDismissible: false,
@@ -74,9 +76,10 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
 
       final systemData = <String, Map<String, dynamic>>{};
       final systemNames = <String, String>{};
+      final messenger = ScaffoldMessenger.maybeOf(context);
 
-      print('📊 Начинаем сбор данных...');
-      print('📋 Систем в конфиге: ${config.systems.length}');
+      LoggerService().log('📊 Начинаем сбор данных...');
+      LoggerService().log('📋 Систем в конфиге: ${config.systems.length}');
 
       for (var entry in config.systems.entries) {
         final systemId = entry.key;
@@ -84,7 +87,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
         final data = <String, dynamic>{};
         systemNames[systemId] = system.name;
 
-        print('📁 Система: $systemId (${system.name})');
+        LoggerService().log('📁 Система: $systemId (${system.name})');
 
         for (var submenuEntry in system.submenus.entries) {
           final submenu = submenuEntry.value;
@@ -93,7 +96,6 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
             for (var item in submenu.items!) {
               try {
                 dynamic value;
-                // ✅ Используем активный сервис
                 value = await modbusManager.readParameterValue(item);
                 data[item.name] = {
                   'value': value ?? '--',
@@ -101,9 +103,15 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                   'bit': item.bit,
                   'states': item.states,
                 };
-                print('  ✅ ${item.name} = $value');
+                LoggerService().log(
+                  '  ✅ ${item.name} = $value',
+                  level: LogLevel.debug,
+                );
               } catch (e) {
-                print('  ❌ Ошибка чтения ${item.name}: $e');
+                LoggerService().log(
+                  '  ❌ Ошибка чтения ${item.name}: $e',
+                  level: LogLevel.warning,
+                );
                 data[item.name] = {
                   'value': 'Ошибка',
                   'unit': item.unit ?? '',
@@ -126,9 +134,15 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                     'bit': item.bit,
                     'states': item.states,
                   };
-                  print('  ✅ ${item.name} = $value');
+                  LoggerService().log(
+                    '  ✅ ${item.name} = $value',
+                    level: LogLevel.debug,
+                  );
                 } catch (e) {
-                  print('  ❌ Ошибка чтения ${item.name}: $e');
+                  LoggerService().log(
+                    '  ❌ Ошибка чтения ${item.name}: $e',
+                    level: LogLevel.warning,
+                  );
                   data[item.name] = {
                     'value': 'Ошибка',
                     'unit': item.unit ?? '',
@@ -142,14 +156,15 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
         }
 
         systemData[systemId] = data;
-        print('✅ Система $systemId: ${data.length} параметров');
+        LoggerService().log('✅ Система $systemId: ${data.length} параметров');
       }
 
-      Navigator.pop(context);
-      print('📊 Всего систем с данными: ${systemData.length}');
+      if (!mounted) return;
+      navigator.pop();
+      LoggerService().log('📊 Всего систем с данными: ${systemData.length}');
 
       if (systemData.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger?.showSnackBar(
           const SnackBar(
             content: Text('⚠️ Нет данных для отчета'),
             backgroundColor: Colors.orange,
@@ -169,17 +184,21 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
         reportTime: DateTime.now(),
       );
     } catch (e) {
-      try {
-        Navigator.pop(context);
-      } catch (_) {}
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger?.showSnackBar(
         SnackBar(
           content: Text('❌ Ошибка создания отчета: $e'),
           backgroundColor: Colors.red,
         ),
       );
-      print('❌ Ошибка создания отчета: $e');
+      LoggerService().log(
+        '❌ Ошибка создания отчета: $e',
+        level: LogLevel.error,
+      );
     }
   }
 
@@ -243,7 +262,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               margin: const EdgeInsets.only(right: 8),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.15),
+                color: Colors.white.withValues(alpha: 0.15),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Text(
@@ -268,24 +287,25 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
           IconButton(
             icon: const Icon(Icons.cloud_download),
             onPressed: () async {
+              final messenger = ScaffoldMessenger.maybeOf(context);
               final result = await Navigator.push<ConfigModel>(
                 context,
                 MaterialPageRoute(
                   builder: (context) => const LoadConfigScreen(),
                 ),
               );
-              if (result != null && mounted) {
-                final myApp = context.findAncestorStateOfType<MyAppState>();
-                myApp?.updateConfig(result);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      '✅ Конфигурация "${result.projectName}" загружена',
-                    ),
-                    backgroundColor: Colors.green,
+              if (!mounted || result == null) return;
+
+              final myApp = context.findAncestorStateOfType<MyAppState>();
+              myApp?.updateConfig(result);
+              messenger?.showSnackBar(
+                SnackBar(
+                  content: Text(
+                    '✅ Конфигурация "${result.projectName}" загружена',
                   ),
-                );
-              }
+                  backgroundColor: Colors.green,
+                ),
+              );
             },
             tooltip: 'Загрузить конфигурацию',
           ),
@@ -293,6 +313,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
           IconButton(
             icon: const Icon(Icons.folder_open),
             onPressed: () async {
+              final messenger = ScaffoldMessenger.maybeOf(context);
               final result = await Navigator.push<ConfigModel>(
                 context,
                 MaterialPageRoute(
@@ -303,18 +324,18 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                   ),
                 ),
               );
-              if (result != null && mounted) {
-                final myApp = context.findAncestorStateOfType<MyAppState>();
-                myApp?.updateConfig(result);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      '✅ Конфигурация "${result.projectName}" загружена',
-                    ),
-                    backgroundColor: Colors.green,
+              if (!mounted || result == null) return;
+
+              final myApp = context.findAncestorStateOfType<MyAppState>();
+              myApp?.updateConfig(result);
+              messenger?.showSnackBar(
+                SnackBar(
+                  content: Text(
+                    '✅ Конфигурация "${result.projectName}" загружена',
                   ),
-                );
-              }
+                  backgroundColor: Colors.green,
+                ),
+              );
             },
             tooltip: 'Список конфигураций',
           ),
@@ -500,7 +521,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                         },
                       ),
                     );
-                  }).toList(),
+                  }),
                   // Кнопка подключения
                   Card(
                     elevation: 4,
@@ -586,7 +607,10 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                       ),
                       onTap: () async {
                         final pinService = PinService();
+                        final messenger = ScaffoldMessenger.maybeOf(context);
                         final isSet = await pinService.isPinSet();
+
+                        if (!mounted) return;
 
                         if (isSet) {
                           // Если PIN установлен - предлагаем удалить
@@ -614,26 +638,31 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                             ),
                           );
 
+                          if (!mounted) return;
+
                           if (confirm == true) {
                             await pinService.removePin();
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('🔓 PIN-код удален'),
-                                  backgroundColor: Colors.green,
-                                ),
-                              );
-                            }
+                            if (!mounted) return;
+                            messenger?.showSnackBar(
+                              const SnackBar(
+                                content: Text('🔓 PIN-код удален'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
                           }
                         } else {
                           // Если PIN не установлен - переходим к установке
-                          Navigator.push(
-                            context,
+                          if (!mounted) return;
+                          final navigator = Navigator.of(context);
+                          await navigator.push(
                             MaterialPageRoute(
                               builder: (context) => PinScreen(
                                 onSuccess: () {
-                                  Navigator.pop(context);
-                                  ScaffoldMessenger.of(context).showSnackBar(
+                                  if (!Navigator.of(context).mounted) return;
+                                  Navigator.of(context).pop();
+                                  ScaffoldMessenger.maybeOf(
+                                    context,
+                                  )?.showSnackBar(
                                     const SnackBar(
                                       content: Text('🔐 PIN-код установлен'),
                                       backgroundColor: Colors.green,

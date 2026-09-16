@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import '../models/config_model.dart';
+import 'logger_service.dart';
 
 class ConfigService {
   static const String configFileName = 'config.json';
@@ -17,7 +18,10 @@ class ConfigService {
         }
         return externalDir;
       } catch (e) {
-        print('⚠️ Не удалось создать папку в $externalDir: $e');
+        LoggerService().log(
+          '⚠️ Не удалось создать папку в $externalDir: $e',
+          level: LogLevel.warning,
+        );
         return '/data/data/com.example.pr200_control/files';
       }
     } else if (Platform.isIOS) {
@@ -32,29 +36,32 @@ class ConfigService {
       final appDir = await _getAppDirectory();
       final file = File('$appDir/$configFileName');
 
-      print('🔍 Поиск конфига в: ${file.path}');
+      LoggerService().log('🔍 Поиск конфига в: ${file.path}');
 
       if (await file.exists()) {
         final content = await file.readAsString();
         final json = jsonDecode(content) as Map<String, dynamic>;
-        print('✅ Конфиг загружен из локального хранилища');
+        LoggerService().log('✅ Конфиг загружен из локального хранилища');
         return ConfigModel.fromJson(json);
       }
 
-      print('⚠️ Локальный конфиг не найден, загружаю из assets');
+      LoggerService().log('⚠️ Локальный конфиг не найден, загружаю из assets');
       final assetConfig = await _loadAssetConfig();
       if (assetConfig != null) {
-        print('✅ Конфиг загружен из assets');
+        LoggerService().log('✅ Конфиг загружен из assets');
         await _saveLocalConfig(assetConfig);
         return assetConfig;
       }
 
-      print('⚠️ Конфиг не найден, создаю по умолчанию');
+      LoggerService().log('⚠️ Конфиг не найден, создаю по умолчанию');
       final defaultConfig = _createDefaultConfig();
       await _saveLocalConfig(defaultConfig);
       return defaultConfig;
     } catch (e) {
-      print('❌ Ошибка загрузки конфига: $e');
+      LoggerService().log(
+        '❌ Ошибка загрузки конфига: $e',
+        level: LogLevel.error,
+      );
       return _createDefaultConfig();
     }
   }
@@ -63,10 +70,13 @@ class ConfigService {
     try {
       final content = await rootBundle.loadString('assets/config.json');
       final json = jsonDecode(content) as Map<String, dynamic>;
-      print('📄 Конфиг загружен успешно');
+      LoggerService().log('📄 Конфиг загружен успешно');
       return ConfigModel.fromJson(json);
     } catch (e) {
-      print('⚠️ Ошибка загрузки конфига из assets: $e');
+      LoggerService().log(
+        '⚠️ Ошибка загрузки конфига из assets: $e',
+        level: LogLevel.warning,
+      );
       return null;
     }
   }
@@ -77,15 +87,18 @@ class ConfigService {
       final dir = Directory(appDir);
       if (!await dir.exists()) {
         await dir.create(recursive: true);
-        print('📁 Создана папка: $appDir');
+        LoggerService().log('📁 Создана папка: $appDir');
       }
 
       final file = File('$appDir/$configFileName');
       final jsonString = jsonEncode(config.toJson());
       await file.writeAsString(jsonString, encoding: utf8);
-      print('✅ Конфиг сохранен: ${file.path}');
+      LoggerService().log('✅ Конфиг сохранен: ${file.path}');
     } catch (e) {
-      print('❌ Ошибка сохранения конфига: $e');
+      LoggerService().log(
+        '❌ Ошибка сохранения конфига: $e',
+        level: LogLevel.error,
+      );
     }
   }
 

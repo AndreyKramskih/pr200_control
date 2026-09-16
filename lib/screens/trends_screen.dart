@@ -148,7 +148,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
       setState(() {
         _isCollecting = true;
       });
-      LoggerService().log('▶️ Сбор данных запущен (${activeCount} датчиков)');
+      LoggerService().log('▶️ Сбор данных запущен ($activeCount датчиков)');
     }
   }
 
@@ -315,7 +315,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
@@ -476,8 +476,8 @@ class _TrendsScreenState extends State<TrendsScreen> {
                               ),
                               decoration: BoxDecoration(
                                 color: series.isActive
-                                    ? Colors.blue.withOpacity(0.1)
-                                    : Colors.grey.withOpacity(0.1),
+                                    ? Colors.blue.withValues(alpha: 0.1)
+                                    : Colors.grey.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
