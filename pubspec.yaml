@@ -84,6 +84,10 @@ flutter_launcher_icons:
   adaptive_icon_background: "#FFFFFF"   # Цвет фона для адаптивной иконки (Android)
   adaptive_icon_foreground: "assets/images/systherm_icon.png"  # Можно использовать отдельное изображение
   remove_alpha_ios: true
+  windows:
+    generate: true
+    image_path: "assets/images/systherm_icon.png" # Путь к вашей PNG
+    icon_size: 256 # Размер, от 48 до 256
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
