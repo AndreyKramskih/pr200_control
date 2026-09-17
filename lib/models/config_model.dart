@@ -9,6 +9,9 @@ class ConfigModel {
   String connectionType; // 'tcp' | 'rtu' | 'cloud'
   RtuConfig? rtuConfig; // ✅ Настройки RTU
   OwenCloudConfig? cloudConfig; // ← НОВОЕ
+  /// Путь к папке с документами проекта.
+  /// null — пользователь ещё не выбрал папку.
+  String? materialsPath;
 
   ConfigModel({
     required this.projectName,
@@ -18,6 +21,7 @@ class ConfigModel {
     this.connectionType = 'tcp', // ✅ По умолчанию TCP
     this.rtuConfig,
     this.cloudConfig, // ← НОВОЕ
+    this.materialsPath,
   });
 
   factory ConfigModel.fromJson(Map<String, dynamic> json) {
@@ -38,7 +42,8 @@ class ConfigModel {
           ? OwenCloudConfig.fromJson(
               json['cloud_config'] as Map<String, dynamic>,
             )
-          : null, // ← НОВОЕ
+          : null,
+      materialsPath: json['materials_path']?.toString(), // ← НОВОЕ
     );
   }
 
@@ -62,7 +67,9 @@ class ConfigModel {
     'connection': connection.toJson(),
     'connection_type': connectionType,
     if (rtuConfig != null) 'rtu_config': rtuConfig!.toJson(),
-    if (cloudConfig != null) 'cloud_config': cloudConfig!.toJson(), // ← НОВОЕ
+    if (cloudConfig != null) 'cloud_config': cloudConfig!.toJson(),
+    if (materialsPath != null && materialsPath!.isNotEmpty)
+      'materials_path': materialsPath, // ← НОВОЕ
   };
 
   SystemConfig? getSystem(String id) => systems[id];

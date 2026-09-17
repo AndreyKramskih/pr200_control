@@ -18,6 +18,7 @@ import '../services/connection_status.dart';
 import '../services/modbus_manager.dart';
 import '../screens/history_screen.dart';
 import '../services/logger_service.dart';
+import 'materials_screen.dart';
 
 class MainMenuScreen extends StatefulWidget {
   const MainMenuScreen({super.key});
@@ -266,7 +267,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Text(
-                'v1.0.11',
+                'v1.0.12',
                 style: TextStyle(
                   color: Colors.white70,
                   fontSize: 13,
@@ -813,6 +814,61 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                               );
                             }
                           : null,
+                    ),
+                  ),
+                  // Кнопка "Документы проекта"
+                  Card(
+                    elevation: 4,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      leading: const Text('📁', style: TextStyle(fontSize: 32)),
+                      title: Text(
+                        'Документы проекта',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: themeProvider.isDarkMode
+                              ? Colors.white
+                              : Colors.black87,
+                        ),
+                      ),
+                      subtitle: Text(
+                        config.materialsPath != null &&
+                                config.materialsPath!.isNotEmpty
+                            ? 'Схемы, спецификации, инструкции'
+                            : 'Папка не выбрана',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color:
+                              config.materialsPath != null &&
+                                  config.materialsPath!.isNotEmpty
+                              ? Colors.green
+                              : Colors.orange,
+                        ),
+                      ),
+                      trailing: Icon(
+                        Icons.folder_open,
+                        color: themeProvider.isDarkMode
+                            ? Colors.grey[400]
+                            : Colors.amber[700],
+                      ),
+                      onTap: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const MaterialsScreen(),
+                          ),
+                        );
+                        // ✅ После возврата принудительно обновляем экран
+                        if (mounted) setState(() {});
+                      },
                     ),
                   ),
                 ],
