@@ -265,6 +265,9 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
   Future<void> _startTest() async {
     if (!mounted) return;
 
+    // ✅ Захватываем всё, что зависит от context, СРАЗУ
+    final modbusManager = ModbusManager(context);
+
     if (_selectedSensor == null) {
       _showError('Выберите датчик обратной связи');
       return;
@@ -278,7 +281,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
       }
     }
 
-    final modbusManager = ModbusManager(context);
     if (!modbusManager.connected) {
       _showError('Нет подключения к контроллеру');
       return;
@@ -311,6 +313,7 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
     final initialTemp = await modbusManager.readParameterValue(
       _selectedSensor!,
     );
+    if (!mounted) return;
     if (initialTemp == null) {
       _showError('Не удалось прочитать датчик обратной связи');
       return;
@@ -351,7 +354,7 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
     }
 
     final travelTime = double.tryParse(_travelTimeController.text) ?? 30;
-    final navigator = Navigator.of(context);
+
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -384,7 +387,6 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
     );
 
     if (confirm != true || !mounted) return;
-    navigator.pop();
 
     setState(() {
       _isRunning = true;
@@ -398,6 +400,8 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
         modeItem.address,
         modeItem.bit ?? 0,
       );
+      if (!mounted) return;
+
       if (!successMode) {
         _showError('Не удалось переключить клапан в ручной режим');
         setState(() {
@@ -414,6 +418,7 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
           openingValue,
           type: setpointItem.type,
         );
+        if (!mounted) return;
         if (!successSetpoint) {
           _showError('Не удалось установить положение клапана');
           await modbusManager.clearBit(modeItem.address, modeItem.bit ?? 0);
@@ -461,9 +466,12 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
 
       await Future.delayed(const Duration(seconds: 2));
 
+      if (!mounted) return;
+
       final startTemp = await modbusManager.readParameterValue(
         _selectedSensor!,
       );
+      if (!mounted) return;
       if (startTemp == null) {
         _showError('Не удалось прочитать начальную температуру');
         await _closeValve(modbusManager);
@@ -490,6 +498,7 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
         _statusMessage = '📊 Сбор данных...';
       });
 
+      if (!mounted) return;
       _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
         if (!mounted) {
           timer.cancel();
