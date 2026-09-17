@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/logger_service.dart';
+import '../widgets/responsive_container.dart';
 
 class LogScreen extends StatefulWidget {
   const LogScreen({super.key});
@@ -292,75 +293,78 @@ class _LogScreenState extends State<LogScreen> {
                         ],
                       ),
                     )
-                  : ListView.builder(
-                      controller: _scrollController,
-                      itemCount: filteredLogs.length,
-                      itemBuilder: (context, index) {
-                        final log = filteredLogs[index];
-                        final levelColor = _getLevelColor(log.level);
+                  : ResponsiveContainer(
+                      maxWidth: 1100,
+                      child: ListView.builder(
+                        controller: _scrollController,
+                        itemCount: filteredLogs.length,
+                        itemBuilder: (context, index) {
+                          final log = filteredLogs[index];
+                          final levelColor = _getLevelColor(log.level);
 
-                        return Container(
-                          margin: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: isDark ? Colors.grey[850] : Colors.white,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border(
-                              left: BorderSide(color: levelColor, width: 4),
+                          return Container(
+                            margin: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
                             ),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.grey[850] : Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border(
+                                left: BorderSide(color: levelColor, width: 4),
+                              ),
                             ),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  _getLevelIcon(log.level),
-                                  style: const TextStyle(fontSize: 16),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        log.message,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          color: isDark
-                                              ? Colors.white
-                                              : Colors.black87,
-                                          fontFamily: 'monospace',
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        log.timestamp.toString().substring(
-                                          0,
-                                          19,
-                                        ),
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          color: isDark
-                                              ? Colors.grey[500]
-                                              : Colors.grey[400],
-                                          fontFamily: 'monospace',
-                                        ),
-                                      ),
-                                    ],
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 8,
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _getLevelIcon(log.level),
+                                    style: const TextStyle(fontSize: 16),
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          log.message,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            color: isDark
+                                                ? Colors.white
+                                                : Colors.black87,
+                                            fontFamily: 'monospace',
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          log.timestamp.toString().substring(
+                                            0,
+                                            19,
+                                          ),
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            color: isDark
+                                                ? Colors.grey[500]
+                                                : Colors.grey[400],
+                                            fontFamily: 'monospace',
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        );
-                      },
+                          );
+                        },
+                      ),
                     ),
             ),
           ],

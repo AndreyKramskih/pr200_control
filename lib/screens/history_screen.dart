@@ -369,35 +369,38 @@ class _HistoryScreenState extends State<HistoryScreen> {
           // === Список параметров ===
           Expanded(
             flex: 2,
-            child: Material(
-              color: isDark ? Colors.grey[900] : Colors.white,
-              child: _availableItems.isEmpty
-                  ? const Center(child: Text('Нет доступных параметров'))
-                  : ListView.builder(
-                      itemCount: _availableItems.length,
-                      itemBuilder: (context, index) {
-                        final item = _availableItems[index];
-                        final selected = _selectedItems.contains(item);
-                        return CheckboxListTile(
-                          key: ValueKey('hist_item_${item.address}'),
-                          dense: true,
-                          title: Text(item.name),
-                          subtitle: Text(item.unit ?? ''),
-                          value: selected,
-                          onChanged: _loading
-                              ? null
-                              : (v) {
-                                  setState(() {
-                                    if (v == true) {
-                                      _selectedItems.add(item);
-                                    } else {
-                                      _selectedItems.remove(item);
-                                    }
-                                  });
-                                },
-                        );
-                      },
-                    ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 900),
+              child: Material(
+                color: isDark ? Colors.grey[900] : Colors.white,
+                child: _availableItems.isEmpty
+                    ? const Center(child: Text('Нет доступных параметров'))
+                    : ListView.builder(
+                        itemCount: _availableItems.length,
+                        itemBuilder: (context, index) {
+                          final item = _availableItems[index];
+                          final selected = _selectedItems.contains(item);
+                          return CheckboxListTile(
+                            key: ValueKey('hist_item_${item.address}'),
+                            dense: true,
+                            title: Text(item.name),
+                            subtitle: Text(item.unit ?? ''),
+                            value: selected,
+                            onChanged: _loading
+                                ? null
+                                : (v) {
+                                    setState(() {
+                                      if (v == true) {
+                                        _selectedItems.add(item);
+                                      } else {
+                                        _selectedItems.remove(item);
+                                      }
+                                    });
+                                  },
+                          );
+                        },
+                      ),
+              ),
             ),
           ),
 

@@ -171,84 +171,89 @@ class _PinScreenState extends State<PinScreen> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      TextField(
-                        controller: _pinController,
-                        obscureText: _obscureText,
-                        keyboardType: TextInputType.number,
-                        maxLength: 8,
-                        // ✅ Убираем автоматическую фокусировку
-                        autofocus: false,
-                        decoration: InputDecoration(
-                          labelText: 'PIN-код',
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscureText
-                                  ? Icons.visibility
-                                  : Icons.visibility_off,
-                            ),
-                            onPressed: () =>
-                                setState(() => _obscureText = !_obscureText),
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          errorText: _error.isNotEmpty && !widget.isSettingPin
-                              ? _error
-                              : null,
-                        ),
-                        onSubmitted: (_) => _submit(),
-                      ),
-                      if (widget.isSettingPin) ...[
-                        const SizedBox(height: 16),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 420),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
                         TextField(
-                          controller: _confirmController,
+                          controller: _pinController,
                           obscureText: _obscureText,
                           keyboardType: TextInputType.number,
                           maxLength: 8,
+                          // ✅ Убираем автоматическую фокусировку
                           autofocus: false,
                           decoration: InputDecoration(
-                            labelText: 'Подтвердите PIN-код',
-                            prefixIcon: const Icon(Icons.lock),
+                            labelText: 'PIN-код',
+                            prefixIcon: const Icon(Icons.lock_outline),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscureText
+                                    ? Icons.visibility
+                                    : Icons.visibility_off,
+                              ),
+                              onPressed: () =>
+                                  setState(() => _obscureText = !_obscureText),
+                            ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            errorText: _error.isNotEmpty ? _error : null,
+                            errorText: _error.isNotEmpty && !widget.isSettingPin
+                                ? _error
+                                : null,
                           ),
                           onSubmitted: (_) => _submit(),
                         ),
-                      ],
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _isLoading ? null : _submit,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                        if (widget.isSettingPin) ...[
+                          const SizedBox(height: 16),
+                          TextField(
+                            controller: _confirmController,
+                            obscureText: _obscureText,
+                            keyboardType: TextInputType.number,
+                            maxLength: 8,
+                            autofocus: false,
+                            decoration: InputDecoration(
+                              labelText: 'Подтвердите PIN-код',
+                              prefixIcon: const Icon(Icons.lock),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              errorText: _error.isNotEmpty ? _error : null,
                             ),
+                            onSubmitted: (_) => _submit(),
                           ),
-                          child: _isLoading
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
+                        ],
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _isLoading ? null : _submit,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: _isLoading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : Text(
+                                    widget.isSettingPin
+                                        ? 'Установить'
+                                        : 'Войти',
                                   ),
-                                )
-                              : Text(
-                                  widget.isSettingPin ? 'Установить' : 'Войти',
-                                ),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/config_model.dart';
 import '../widgets/relay_widget.dart';
 import '../core/utils/theme_utils.dart';
+import 'responsive_container.dart';
 
 class RelaysListWidget extends StatelessWidget {
   final SubmenuConfig submenu;
@@ -26,18 +27,21 @@ class RelaysListWidget extends StatelessWidget {
 
     return Container(
       color: ThemeUtils.scaffoldColor(context),
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: items.length,
-        itemBuilder: (context, index) {
-          final item = items[index];
-          final value = realtimeData[item.address.toString()];
-          return RelayWidget(
-            item: item,
-            value: value,
-            key: ValueKey('relay_${item.address}'),
-          );
-        },
+      child: ResponsiveContainer(
+        maxWidth: 900,
+        child: ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: items.length,
+          itemBuilder: (context, index) {
+            final item = items[index];
+            final value = realtimeData[item.address.toString()];
+            return RelayWidget(
+              item: item,
+              value: value,
+              key: ValueKey('relay_${item.address}'),
+            );
+          },
+        ),
       ),
     );
   }

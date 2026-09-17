@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../models/config_model.dart';
 import '../services/config_service.dart';
 import '../services/config_manager.dart';
+import '../widgets/responsive_container.dart';
 
 class LoadConfigScreen extends StatefulWidget {
   const LoadConfigScreen({super.key});
@@ -112,147 +113,150 @@ class _LoadConfigScreenState extends State<LoadConfigScreen> {
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Загрузите конфигурацию для вашего проекта',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Введите ссылку на JSON-конфигурацию',
-              style: TextStyle(color: Colors.grey),
-            ),
-            const SizedBox(height: 24),
-
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+        child: ResponsiveContainer(
+          maxWidth: 600,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Загрузите конфигурацию для вашего проекта',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    TextField(
-                      controller: _urlController,
-                      decoration: InputDecoration(
-                        labelText: 'URL конфигурации',
-                        hintText: 'https://example.com/project1.json',
-                        prefixIcon: const Icon(Icons.link),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    ElevatedButton.icon(
-                      onPressed: _isLoading ? null : _loadConfigFromUrl,
-                      icon: _isLoading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.download),
-                      label: Text(_isLoading ? 'Загрузка...' : 'Загрузить'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                  ],
+              const SizedBox(height: 8),
+              const Text(
+                'Введите ссылку на JSON-конфигурацию',
+                style: TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 24),
+
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
-              ),
-            ),
-
-            const SizedBox(height: 16),
-
-            if (_status.isNotEmpty)
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: _status.contains('✅')
-                      ? Colors.green[50]
-                      : _status.contains('❌')
-                      ? Colors.red[50]
-                      : Colors.blue[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: _status.contains('✅')
-                        ? Colors.green
-                        : _status.contains('❌')
-                        ? Colors.red
-                        : Colors.blue,
-                    width: 1,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: _urlController,
+                        decoration: InputDecoration(
+                          labelText: 'URL конфигурации',
+                          hintText: 'https://example.com/project1.json',
+                          prefixIcon: const Icon(Icons.link),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      ElevatedButton.icon(
+                        onPressed: _isLoading ? null : _loadConfigFromUrl,
+                        icon: _isLoading
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.download),
+                        label: Text(_isLoading ? 'Загрузка...' : 'Загрузить'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                child: Row(
-                  children: [
-                    Icon(
-                      _status.contains('✅')
-                          ? Icons.check_circle
-                          : _status.contains('❌')
-                          ? Icons.error
-                          : Icons.info,
+              ),
+
+              const SizedBox(height: 16),
+
+              if (_status.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: _status.contains('✅')
+                        ? Colors.green[50]
+                        : _status.contains('❌')
+                        ? Colors.red[50]
+                        : Colors.blue[50],
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
                       color: _status.contains('✅')
                           ? Colors.green
                           : _status.contains('❌')
                           ? Colors.red
                           : Colors.blue,
+                      width: 1,
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        _status,
-                        style: TextStyle(
-                          color: _status.contains('✅')
-                              ? Colors.green[800]
-                              : _status.contains('❌')
-                              ? Colors.red[800]
-                              : Colors.blue[800],
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _status.contains('✅')
+                            ? Icons.check_circle
+                            : _status.contains('❌')
+                            ? Icons.error
+                            : Icons.info,
+                        color: _status.contains('✅')
+                            ? Colors.green
+                            : _status.contains('❌')
+                            ? Colors.red
+                            : Colors.blue,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _status,
+                          style: TextStyle(
+                            color: _status.contains('✅')
+                                ? Colors.green[800]
+                                : _status.contains('❌')
+                                ? Colors.red[800]
+                                : Colors.blue[800],
+                          ),
                         ),
                       ),
+                    ],
+                  ),
+                ),
+
+              const SizedBox(height: 16),
+
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '💡 Как получить ссылку:',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      '1. Наведите камеру на QR код\n'
+                      '2. Получите прямую ссылку на файл\n'
+                      '3. Вставьте ссылку в это поле\n'
+                      '4. Нажмите "Загрузить"',
+                      style: TextStyle(fontSize: 12, color: Colors.grey),
                     ),
                   ],
                 ),
               ),
-
-            const SizedBox(height: 16),
-
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '💡 Как получить ссылку:',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    '1. Наведите камеру на QR код\n'
-                    '2. Получите прямую ссылку на файл\n'
-                    '3. Вставьте ссылку в это поле\n'
-                    '4. Нажмите "Загрузить"',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

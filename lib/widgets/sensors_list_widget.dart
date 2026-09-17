@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/config_model.dart';
 import '../widgets/sensor_widget.dart';
 import '../core/utils/theme_utils.dart';
+import '../widgets/responsive_container.dart';
 
 class SensorsListWidget extends StatelessWidget {
   final SubmenuConfig submenu;
@@ -24,16 +25,19 @@ class SensorsListWidget extends StatelessWidget {
 
     return Container(
       color: ThemeUtils.scaffoldColor(context),
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: submenu.items!.map((item) {
-          final value = realtimeData[item.address.toString()];
-          return SensorWidget(
-            item: item,
-            value: value,
-            key: ValueKey('sensor_${item.address}'),
-          );
-        }).toList(),
+      child: ResponsiveContainer(
+        maxWidth: 900,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: submenu.items!.map((item) {
+            final value = realtimeData[item.address.toString()];
+            return SensorWidget(
+              item: item,
+              value: value,
+              key: ValueKey('sensor_${item.address}'),
+            );
+          }).toList(),
+        ),
       ),
     );
   }

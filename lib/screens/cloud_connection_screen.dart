@@ -9,6 +9,7 @@ import '../services/config_manager.dart';
 import '../services/logger_service.dart';
 import '../services/modbus_rtu_service.dart';
 import '../services/modbus_service.dart';
+import '../widgets/responsive_container.dart';
 
 class CloudConnectionScreen extends StatefulWidget {
   const CloudConnectionScreen({super.key});
@@ -264,335 +265,341 @@ class _CloudConnectionScreenState extends State<CloudConnectionScreen> {
         ),
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 8),
-              Icon(Icons.cloud_outlined, size: 64, color: Colors.blue[700]),
-              const SizedBox(height: 16),
-              const Text(
-                'Owen Cloud REST API',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Авторизуйтесь в личном кабинете и выберите устройство',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-              const SizedBox(height: 24),
-
-              Card(
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+          child: ResponsiveContainer(
+            maxWidth: 600,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 8),
+                Icon(Icons.cloud_outlined, size: 64, color: Colors.blue[700]),
+                const SizedBox(height: 16),
+                const Text(
+                  'Owen Cloud REST API',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      TextField(
-                        controller: _loginCtrl,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: const InputDecoration(
-                          labelText: 'Логин (e-mail)',
-                          prefixIcon: Icon(Icons.person_outline),
-                          border: OutlineInputBorder(),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _passCtrl,
-                        obscureText: _obscure,
-                        decoration: InputDecoration(
-                          labelText: 'Пароль',
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscure
-                                  ? Icons.visibility
-                                  : Icons.visibility_off,
-                            ),
-                            onPressed: () =>
-                                setState(() => _obscure = !_obscure),
+                const SizedBox(height: 8),
+                Text(
+                  'Авторизуйтесь в личном кабинете и выберите устройство',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 24),
+
+                Card(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        TextField(
+                          controller: _loginCtrl,
+                          keyboardType: TextInputType.emailAddress,
+                          decoration: const InputDecoration(
+                            labelText: 'Логин (e-mail)',
+                            prefixIcon: Icon(Icons.person_outline),
+                            border: OutlineInputBorder(),
                           ),
-                          border: const OutlineInputBorder(),
                         ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _passCtrl,
+                          obscureText: _obscure,
+                          decoration: InputDecoration(
+                            labelText: 'Пароль',
+                            prefixIcon: const Icon(Icons.lock_outline),
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscure
+                                    ? Icons.visibility
+                                    : Icons.visibility_off,
+                              ),
+                              onPressed: () =>
+                                  setState(() => _obscure = !_obscure),
+                            ),
+                            border: const OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _deviceIdCtrl,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'ID устройства',
+                            hintText: 'например, 248007',
+                            prefixIcon: Icon(Icons.memory),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Загрузка списка устройств
+                OutlinedButton.icon(
+                  onPressed: _loadingDevices ? null : _loadDevices,
+                  icon: _loadingDevices
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.search),
+                  label: Text(
+                    _loadingDevices
+                        ? 'Загрузка...'
+                        : 'Загрузить список устройств',
+                  ),
+                ),
+
+                if (_devices.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    initialValue: int.tryParse(_deviceIdCtrl.text),
+                    decoration: const InputDecoration(
+                      labelText: 'Выберите устройство',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: _devices.map((d) {
+                      final id = d['id'] is int
+                          ? d['id'] as int
+                          : int.tryParse(d['id'].toString());
+                      final name =
+                          d['name']?.toString() ??
+                          d['identifier']?.toString() ??
+                          'Устройство $id';
+                      return DropdownMenuItem<int>(
+                        value: id,
+                        child: Text('$name (ID $id)'),
+                      );
+                    }).toList(),
+                    onChanged: (v) {
+                      if (v != null) {
+                        setState(() {
+                          _deviceIdCtrl.text = v.toString();
+                          _selectedDevice = _devices.firstWhere(
+                            (d) =>
+                                (d['id'] is int
+                                    ? d['id']
+                                    : int.tryParse(d['id'].toString())) ==
+                                v,
+                            orElse: () => <String, dynamic>{},
+                          );
+                        });
+                      }
+                    },
+                  ),
+                ],
+
+                const SizedBox(height: 16),
+
+                // Кнопка "Подключиться"
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _connecting ? null : _connect,
+                    icon: _connecting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.cloud_done),
+                    label: Text(
+                      _connecting ? 'Подключение...' : 'Подключиться',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
                       ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: _deviceIdCtrl,
-                        keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'ID устройства',
-                          hintText: 'например, 248007',
-                          prefixIcon: Icon(Icons.memory),
-                          border: OutlineInputBorder(),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Кнопка "Сохранить"
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _saving ? null : _saveToConfig,
+                    icon: _saving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.save),
+                    label: Text(
+                      _saving ? 'Сохранение...' : 'Сохранить в конфиг',
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Кнопка "Выйти / сменить аккаунт" — с фоном и границей
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Выйти из аккаунта?'),
+                          content: const Text(
+                            'Логин, пароль и токен будут удалены из конфигурации. '
+                            'При следующем запуске потребуется ввести данные заново.',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: const Text('Отмена'),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, true),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.red,
+                              ),
+                              child: const Text('Выйти'),
+                            ),
+                          ],
+                        ),
+                      );
+
+                      if (confirm != true || !mounted) return;
+
+                      final service = Provider.of<OwenCloudService>(
+                        context,
+                        listen: false,
+                      );
+                      await service.disconnect();
+
+                      final config = Provider.of<ConfigModel>(
+                        context,
+                        listen: false,
+                      );
+                      config.cloudConfig = null;
+                      if (config.connectionType == 'cloud') {
+                        config.connectionType = 'tcp';
+                      }
+
+                      final configService = ConfigService();
+                      await configService.saveConfig(config);
+
+                      final activeName = await ConfigManager.getActiveConfig();
+                      if (activeName != null) {
+                        await ConfigManager.saveConfig(
+                          config,
+                          name: activeName,
+                        );
+                      }
+
+                      if (mounted) {
+                        _loginCtrl.clear();
+                        _passCtrl.clear();
+                        _deviceIdCtrl.clear();
+                        setState(() {
+                          _devices = [];
+                          _selectedDevice = null;
+                          _status = '✅ Вы вышли из аккаунта';
+                          _statusColor = Colors.green;
+                        });
+                      }
+                    },
+                    icon: const Icon(Icons.logout, color: Colors.red),
+                    label: const Text(
+                      'Выйти / сменить аккаунт',
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: Colors.red.withValues(alpha: 0.06),
+                      side: const BorderSide(color: Colors.red, width: 1.5),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                if (_status.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _statusColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _statusColor.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: Text(
+                      _status,
+                      style: TextStyle(
+                        color: _statusColor,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+
+                const SizedBox(height: 16),
+
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue[50],
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.info_outline, size: 18, color: Colors.blue),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Токен обновляется автоматически за 4 минуты до истечения. '
+                          'ID параметров сопоставляются кодам P<адрес Modbus>.',
+                          style: TextStyle(fontSize: 12, color: Colors.blue),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Загрузка списка устройств
-              OutlinedButton.icon(
-                onPressed: _loadingDevices ? null : _loadDevices,
-                icon: _loadingDevices
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.search),
-                label: Text(
-                  _loadingDevices
-                      ? 'Загрузка...'
-                      : 'Загрузить список устройств',
-                ),
-              ),
-
-              if (_devices.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                DropdownButtonFormField<int>(
-                  initialValue: int.tryParse(_deviceIdCtrl.text),
-                  decoration: const InputDecoration(
-                    labelText: 'Выберите устройство',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: _devices.map((d) {
-                    final id = d['id'] is int
-                        ? d['id'] as int
-                        : int.tryParse(d['id'].toString());
-                    final name =
-                        d['name']?.toString() ??
-                        d['identifier']?.toString() ??
-                        'Устройство $id';
-                    return DropdownMenuItem<int>(
-                      value: id,
-                      child: Text('$name (ID $id)'),
-                    );
-                  }).toList(),
-                  onChanged: (v) {
-                    if (v != null) {
-                      setState(() {
-                        _deviceIdCtrl.text = v.toString();
-                        _selectedDevice = _devices.firstWhere(
-                          (d) =>
-                              (d['id'] is int
-                                  ? d['id']
-                                  : int.tryParse(d['id'].toString())) ==
-                              v,
-                          orElse: () => <String, dynamic>{},
-                        );
-                      });
-                    }
-                  },
-                ),
               ],
-
-              const SizedBox(height: 16),
-
-              // Кнопка "Подключиться"
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _connecting ? null : _connect,
-                  icon: _connecting
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.cloud_done),
-                  label: Text(
-                    _connecting ? 'Подключение...' : 'Подключиться',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Кнопка "Сохранить"
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _saving ? null : _saveToConfig,
-                  icon: _saving
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.save),
-                  label: Text(
-                    _saving ? 'Сохранение...' : 'Сохранить в конфиг',
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Кнопка "Выйти / сменить аккаунт" — с фоном и границей
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    final confirm = await showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('Выйти из аккаунта?'),
-                        content: const Text(
-                          'Логин, пароль и токен будут удалены из конфигурации. '
-                          'При следующем запуске потребуется ввести данные заново.',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx, false),
-                            child: const Text('Отмена'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx, true),
-                            style: TextButton.styleFrom(
-                              foregroundColor: Colors.red,
-                            ),
-                            child: const Text('Выйти'),
-                          ),
-                        ],
-                      ),
-                    );
-
-                    if (confirm != true || !mounted) return;
-
-                    final service = Provider.of<OwenCloudService>(
-                      context,
-                      listen: false,
-                    );
-                    await service.disconnect();
-
-                    final config = Provider.of<ConfigModel>(
-                      context,
-                      listen: false,
-                    );
-                    config.cloudConfig = null;
-                    if (config.connectionType == 'cloud') {
-                      config.connectionType = 'tcp';
-                    }
-
-                    final configService = ConfigService();
-                    await configService.saveConfig(config);
-
-                    final activeName = await ConfigManager.getActiveConfig();
-                    if (activeName != null) {
-                      await ConfigManager.saveConfig(config, name: activeName);
-                    }
-
-                    if (mounted) {
-                      _loginCtrl.clear();
-                      _passCtrl.clear();
-                      _deviceIdCtrl.clear();
-                      setState(() {
-                        _devices = [];
-                        _selectedDevice = null;
-                        _status = '✅ Вы вышли из аккаунта';
-                        _statusColor = Colors.green;
-                      });
-                    }
-                  },
-                  icon: const Icon(Icons.logout, color: Colors.red),
-                  label: const Text(
-                    'Выйти / сменить аккаунт',
-                    style: TextStyle(
-                      color: Colors.red,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    backgroundColor: Colors.red.withValues(alpha: 0.06),
-                    side: const BorderSide(color: Colors.red, width: 1.5),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              if (_status.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: _statusColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: _statusColor.withValues(alpha: 0.4),
-                    ),
-                  ),
-                  child: Text(
-                    _status,
-                    style: TextStyle(
-                      color: _statusColor,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ),
-
-              const SizedBox(height: 16),
-
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.blue[50],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.info_outline, size: 18, color: Colors.blue),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Токен обновляется автоматически за 4 минуты до истечения. '
-                        'ID параметров сопоставляются кодам P<адрес Modbus>.',
-                        style: TextStyle(fontSize: 12, color: Colors.blue),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),

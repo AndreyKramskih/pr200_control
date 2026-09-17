@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import '../services/config_manager.dart';
 import '../models/config_model.dart';
+import '../widgets/responsive_container.dart';
 
 class ConfigListScreen extends StatefulWidget {
   final Function(ConfigModel) onConfigSelected;
@@ -157,84 +158,87 @@ class _ConfigListScreenState extends State<ConfigListScreen> {
   Widget _buildConfigList() {
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _configs.length,
-      itemBuilder: (context, index) {
-        final name = _configs[index];
-        final isActive = name == _activeConfig;
+    return ResponsiveContainer(
+      maxWidth: 900,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: _configs.length,
+        itemBuilder: (context, index) {
+          final name = _configs[index];
+          final isActive = name == _activeConfig;
 
-        return Card(
-          elevation: isActive ? 4 : 1,
-          margin: const EdgeInsets.only(bottom: 8),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: isActive
-                ? const BorderSide(color: Colors.green, width: 2)
-                : BorderSide.none,
-          ),
-          color: isActive
-              ? (isDark ? Colors.green[900] : Colors.green[50])
-              : (isDark ? Colors.grey[850] : Colors.white),
-          child: ListTile(
-            leading: Icon(
-              isActive ? Icons.check_circle : Icons.description,
-              color: isActive ? Colors.green : Colors.grey,
+          return Card(
+            elevation: isActive ? 4 : 1,
+            margin: const EdgeInsets.only(bottom: 8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: isActive
+                  ? const BorderSide(color: Colors.green, width: 2)
+                  : BorderSide.none,
             ),
-            title: Text(
-              name.replaceAll('.json', ''),
-              style: TextStyle(
-                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-                color: isDark ? Colors.white : Colors.black87,
-              ),
-            ),
-            subtitle: Text(
-              isActive ? '✅ Активна' : 'Нажмите для активации',
-              style: TextStyle(
-                fontSize: 12,
+            color: isActive
+                ? (isDark ? Colors.green[900] : Colors.green[50])
+                : (isDark ? Colors.grey[850] : Colors.white),
+            child: ListTile(
+              leading: Icon(
+                isActive ? Icons.check_circle : Icons.description,
                 color: isActive ? Colors.green : Colors.grey,
               ),
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (!isActive)
-                  IconButton(
-                    icon: Icon(Icons.check, color: Colors.green),
-                    onPressed: () => _selectConfig(name),
-                    tooltip: 'Активировать',
-                  ),
-                if (!isActive)
-                  IconButton(
-                    icon: Icon(Icons.delete, color: Colors.red),
-                    onPressed: () => _deleteConfig(name),
-                    tooltip: 'Удалить',
-                  ),
-                if (isActive)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
+              title: Text(
+                name.replaceAll('.json', ''),
+                style: TextStyle(
+                  fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                  color: isDark ? Colors.white : Colors.black87,
+                ),
+              ),
+              subtitle: Text(
+                isActive ? '✅ Активна' : 'Нажмите для активации',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isActive ? Colors.green : Colors.grey,
+                ),
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!isActive)
+                    IconButton(
+                      icon: Icon(Icons.check, color: Colors.green),
+                      onPressed: () => _selectConfig(name),
+                      tooltip: 'Активировать',
                     ),
-                    decoration: BoxDecoration(
-                      color: Colors.green,
-                      borderRadius: BorderRadius.circular(12),
+                  if (!isActive)
+                    IconButton(
+                      icon: Icon(Icons.delete, color: Colors.red),
+                      onPressed: () => _deleteConfig(name),
+                      tooltip: 'Удалить',
                     ),
-                    child: const Text(
-                      'АКТИВНА',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
+                  if (isActive)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.green,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        'АКТИВНА',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
+              onTap: () => _selectConfig(name),
             ),
-            onTap: () => _selectConfig(name),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }

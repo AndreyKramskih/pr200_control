@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/config_model.dart';
 import '../core/utils/theme_utils.dart';
 import '../screens/pid_tuning_screen.dart';
+import 'responsive_container.dart';
 
 class ValveWidget extends StatelessWidget {
   final SubmenuConfig submenu;
@@ -145,7 +146,13 @@ class ValveWidget extends StatelessWidget {
     return SafeArea(
       child: Container(
         color: ThemeUtils.scaffoldColor(context),
-        child: ListView(padding: const EdgeInsets.all(16), children: children),
+        child: ResponsiveContainer(
+          maxWidth: 900,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: children,
+          ),
+        ),
       ),
     );
   }

@@ -12,6 +12,7 @@ import '../services/config_manager.dart';
 import '../services/owen_cloud_service.dart';
 import 'cloud_connection_screen.dart';
 import '../services/connection_status.dart';
+import '../widgets/responsive_container.dart';
 
 class ConnectionScreen extends StatefulWidget {
   const ConnectionScreen({super.key});
@@ -825,315 +826,318 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
           ),
         ),
         child: SingleChildScrollView(
-          child: Column(
-            children: [
-              // Иконка
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.blue[700],
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.blue.withValues(alpha: 0.3),
-                      blurRadius: 20,
-                      spreadRadius: 5,
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  activeChannel != ActiveChannel.none
-                      ? activeChannel.icon
-                      : (_connectionType == 'tcp'
-                            ? Icons.settings_ethernet
-                            : _connectionType == 'rtu'
-                            ? Icons.usb
-                            : Icons.cloud),
-                  size: 48,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Заголовок
-              Text(
-                _connectionType == 'tcp'
-                    ? 'Настройки Modbus TCP'
-                    : _connectionType == 'rtu'
-                    ? 'Настройки Modbus RTU (USB)'
-                    : 'Настройки Owen Cloud',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _connectionType == 'tcp'
-                    ? 'Введите параметры подключения к устройству'
-                    : _connectionType == 'rtu'
-                    ? 'Подключите USB-кабель к устройству'
-                    : 'Настройте подключение через Owen Cloud',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: isDark ? Colors.grey[400] : Colors.black54,
-                ),
-              ),
-              const SizedBox(height: 24),
-
-              // Переключатель типа подключения
-              _buildConnectionTypeSelector(),
-
-              // Форма
-              Card(
-                elevation: 4,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                color: isDark ? Colors.grey[850] : Colors.white,
-                child: Padding(
+          child: ResponsiveContainer(
+            maxWidth: 700,
+            child: Column(
+              children: [
+                // Иконка
+                Container(
                   padding: const EdgeInsets.all(20),
-                  child: Column(
-                    children: [
-                      if (_connectionType == 'tcp') ...[
+                  decoration: BoxDecoration(
+                    color: Colors.blue[700],
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.blue.withValues(alpha: 0.3),
+                        blurRadius: 20,
+                        spreadRadius: 5,
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    activeChannel != ActiveChannel.none
+                        ? activeChannel.icon
+                        : (_connectionType == 'tcp'
+                              ? Icons.settings_ethernet
+                              : _connectionType == 'rtu'
+                              ? Icons.usb
+                              : Icons.cloud),
+                    size: 48,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Заголовок
+                Text(
+                  _connectionType == 'tcp'
+                      ? 'Настройки Modbus TCP'
+                      : _connectionType == 'rtu'
+                      ? 'Настройки Modbus RTU (USB)'
+                      : 'Настройки Owen Cloud',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _connectionType == 'tcp'
+                      ? 'Введите параметры подключения к устройству'
+                      : _connectionType == 'rtu'
+                      ? 'Подключите USB-кабель к устройству'
+                      : 'Настройте подключение через Owen Cloud',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: isDark ? Colors.grey[400] : Colors.black54,
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Переключатель типа подключения
+                _buildConnectionTypeSelector(),
+
+                // Форма
+                Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  color: isDark ? Colors.grey[850] : Colors.white,
+                  child: Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        if (_connectionType == 'tcp') ...[
+                          _buildTextField(
+                            controller: _ipController,
+                            label: 'IP адрес',
+                            icon: Icons.network_wifi,
+                            hint: '192.168.1.100',
+                          ),
+                          const SizedBox(height: 16),
+                          _buildTextField(
+                            controller: _portController,
+                            label: 'Порт',
+                            icon: Icons.settings_input_component,
+                            hint: '502',
+                            keyboardType: TextInputType.number,
+                          ),
+                          const SizedBox(height: 16),
+                        ],
                         _buildTextField(
-                          controller: _ipController,
-                          label: 'IP адрес',
-                          icon: Icons.network_wifi,
-                          hint: '192.168.1.100',
-                        ),
-                        const SizedBox(height: 16),
-                        _buildTextField(
-                          controller: _portController,
-                          label: 'Порт',
-                          icon: Icons.settings_input_component,
-                          hint: '502',
+                          controller: _slaveController,
+                          label: 'Slave ID',
+                          icon: Icons.numbers,
+                          hint: '1',
                           keyboardType: TextInputType.number,
                         ),
                         const SizedBox(height: 16),
+                        _buildTextField(
+                          controller: _timeoutController,
+                          label: 'Таймаут (сек)',
+                          icon: Icons.timer,
+                          hint: '3',
+                          keyboardType: TextInputType.number,
+                        ),
                       ],
-                      _buildTextField(
-                        controller: _slaveController,
-                        label: 'Slave ID',
-                        icon: Icons.numbers,
-                        hint: '1',
-                        keyboardType: TextInputType.number,
-                      ),
-                      const SizedBox(height: 16),
-                      _buildTextField(
-                        controller: _timeoutController,
-                        label: 'Таймаут (сек)',
-                        icon: Icons.timer,
-                        hint: '3',
-                        keyboardType: TextInputType.number,
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 24),
+                const SizedBox(height: 24),
 
-              // Статус
-              if (_status.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 12,
-                    horizontal: 16,
+                // Статус
+                if (_status.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 12,
+                      horizontal: 16,
+                    ),
+                    decoration: BoxDecoration(
+                      color: _statusColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: _statusColor.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: _statusColor,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            _status,
+                            style: TextStyle(
+                              color: _statusColor,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                const SizedBox(height: 16),
+
+                // Кнопки
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _isTesting || _isConnecting || _isSaving
+                            ? null
+                            : () => _testConnection(context),
+                        icon: _isTesting
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.network_check),
+                        label: Text(_isTesting ? 'Проверка...' : 'Тест связи'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          disabledBackgroundColor: Colors.blue[300],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _isTesting || _isConnecting || _isSaving
+                            ? null
+                            : () => _connect(context),
+                        icon: _isConnecting
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.check_circle),
+                        label: Text(
+                          _isConnecting ? 'Подключение...' : 'Подключиться',
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          disabledBackgroundColor: Colors.green[300],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Кнопка сохранения
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: _isTesting || _isConnecting || _isSaving
+                        ? null
+                        : () => _saveToConfig(context),
+                    icon: _isSaving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.save),
+                    label: Text(
+                      _isSaving ? 'Сохранение...' : 'Сохранить в конфигурацию',
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      disabledBackgroundColor: Colors.orange[300],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Состояние подключения
+                Container(
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: _statusColor.withValues(alpha: 0.1),
+                    color: isConnected
+                        ? (isDark ? Colors.green[900] : Colors.green[50])
+                        : (isDark ? Colors.grey[800] : Colors.grey[50]),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
-                      color: _statusColor.withValues(alpha: 0.3),
+                      color: isConnected ? Colors.green : Colors.grey,
+                      width: 1,
                     ),
                   ),
                   child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Container(
-                        width: 8,
-                        height: 8,
+                        width: 12,
+                        height: 12,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: _statusColor,
+                          color: isConnected ? Colors.green : Colors.red,
                         ),
                       ),
                       const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          _status,
-                          style: TextStyle(
-                            color: _statusColor,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              const SizedBox(height: 16),
-
-              // Кнопки
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _isTesting || _isConnecting || _isSaving
-                          ? null
-                          : () => _testConnection(context),
-                      icon: _isTesting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.network_check),
-                      label: Text(_isTesting ? 'Проверка...' : 'Тест связи'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        disabledBackgroundColor: Colors.blue[300],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _isTesting || _isConnecting || _isSaving
-                          ? null
-                          : () => _connect(context),
-                      icon: _isConnecting
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.check_circle),
-                      label: Text(
-                        _isConnecting ? 'Подключение...' : 'Подключиться',
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        disabledBackgroundColor: Colors.green[300],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Кнопка сохранения
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: _isTesting || _isConnecting || _isSaving
-                      ? null
-                      : () => _saveToConfig(context),
-                  icon: _isSaving
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.save),
-                  label: Text(
-                    _isSaving ? 'Сохранение...' : 'Сохранить в конфигурацию',
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    disabledBackgroundColor: Colors.orange[300],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Состояние подключения
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isConnected
-                      ? (isDark ? Colors.green[900] : Colors.green[50])
-                      : (isDark ? Colors.grey[800] : Colors.grey[50]),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: isConnected ? Colors.green : Colors.grey,
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: isConnected ? Colors.green : Colors.red,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      isConnected ? 'Подключено' : 'Отключено',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: isConnected ? Colors.green : Colors.red,
-                      ),
-                    ),
-                    if (isConnected) ...[
-                      const SizedBox(width: 16),
                       Text(
-                        activeChannel == ActiveChannel.tcp
-                            ? '${modbus.ip}:${modbus.port}'
-                            : activeChannel == ActiveChannel.rtu
-                            ? rtuService.portName
-                            : activeChannel == ActiveChannel.cloud
-                            ? 'ID ${cloudService.deviceId ?? "?"}'
-                            : '',
+                        isConnected ? 'Подключено' : 'Отключено',
                         style: TextStyle(
-                          fontSize: 12,
-                          color: isDark ? Colors.grey[400] : Colors.grey,
+                          fontWeight: FontWeight.bold,
+                          color: isConnected ? Colors.green : Colors.red,
                         ),
                       ),
+                      if (isConnected) ...[
+                        const SizedBox(width: 16),
+                        Text(
+                          activeChannel == ActiveChannel.tcp
+                              ? '${modbus.ip}:${modbus.port}'
+                              : activeChannel == ActiveChannel.rtu
+                              ? rtuService.portName
+                              : activeChannel == ActiveChannel.cloud
+                              ? 'ID ${cloudService.deviceId ?? "?"}'
+                              : '',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isDark ? Colors.grey[400] : Colors.grey,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Кнопка отключения
-              if (isConnected)
-                TextButton.icon(
-                  onPressed: _disconnect,
-                  icon: const Icon(Icons.link_off, color: Colors.red),
-                  label: const Text(
-                    'Отключиться',
-                    style: TextStyle(color: Colors.red),
                   ),
                 ),
-            ],
+                const SizedBox(height: 16),
+
+                // Кнопка отключения
+                if (isConnected)
+                  TextButton.icon(
+                    onPressed: _disconnect,
+                    icon: const Icon(Icons.link_off, color: Colors.red),
+                    label: const Text(
+                      'Отключиться',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

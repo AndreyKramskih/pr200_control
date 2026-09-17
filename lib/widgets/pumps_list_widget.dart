@@ -3,6 +3,7 @@ import '../models/config_model.dart';
 import '../widgets/pump_widget.dart';
 import '../services/logger_service.dart';
 import '../core/utils/theme_utils.dart';
+import 'responsive_container.dart';
 
 class PumpsListWidget extends StatefulWidget {
   final SubmenuConfig submenu;
@@ -60,36 +61,39 @@ class _PumpsListWidgetState extends State<PumpsListWidget> {
 
     return Container(
       color: ThemeUtils.scaffoldColor(context),
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: widget.submenu.items!.asMap().entries.map((entry) {
-          final index = entry.key;
-          final item = entry.value;
-          final value = widget.realtimeData[item.address.toString()];
-          final modeValue = item.modeAddress != null
-              ? widget.modeData[item.modeAddress.toString()]
-              : null;
+      child: ResponsiveContainer(
+        maxWidth: 900,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: widget.submenu.items!.asMap().entries.map((entry) {
+            final index = entry.key;
+            final item = entry.value;
+            final value = widget.realtimeData[item.address.toString()];
+            final modeValue = item.modeAddress != null
+                ? widget.modeData[item.modeAddress.toString()]
+                : null;
 
-          final pumpId = 'pump_${index}_${item.address}';
+            final pumpId = 'pump_${index}_${item.address}';
 
-          return PumpWidget(
-            item: item,
-            value: value,
-            modeValue: modeValue,
-            pumpId: pumpId,
-            key: ValueKey('pump_${item.address}_${modeValue ?? 0}_$index'),
-            onDropdownOpen: () => _onDropdownOpen(pumpId),
-            onDropdownClose: () => _onDropdownClose(pumpId),
-            onModeChanged: (newValue) {
-              final address = item.modeAddress!;
-              LoggerService().log(
-                '🔄 Локальное обновление режима: ${item.name} -> $newValue (адрес $address)',
-              );
-              widget.onModeChanged(address, newValue);
-            },
-            onModeWrite: widget.onModeWrite,
-          );
-        }).toList(),
+            return PumpWidget(
+              item: item,
+              value: value,
+              modeValue: modeValue,
+              pumpId: pumpId,
+              key: ValueKey('pump_${item.address}_${modeValue ?? 0}_$index'),
+              onDropdownOpen: () => _onDropdownOpen(pumpId),
+              onDropdownClose: () => _onDropdownClose(pumpId),
+              onModeChanged: (newValue) {
+                final address = item.modeAddress!;
+                LoggerService().log(
+                  '🔄 Локальное обновление режима: ${item.name} -> $newValue (адрес $address)',
+                );
+                widget.onModeChanged(address, newValue);
+              },
+              onModeWrite: widget.onModeWrite,
+            );
+          }).toList(),
+        ),
       ),
     );
   }

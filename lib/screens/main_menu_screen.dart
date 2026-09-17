@@ -18,6 +18,7 @@ import '../services/connection_status.dart';
 import '../services/modbus_manager.dart';
 import '../screens/history_screen.dart';
 import '../services/logger_service.dart';
+import '../widgets/responsive_container.dart';
 
 class MainMenuScreen extends StatefulWidget {
   const MainMenuScreen({super.key});
@@ -468,11 +469,64 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
             ),
             // Список систем
             Expanded(
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  ...config.systems.entries.map((entry) {
-                    return Card(
+              child: ResponsiveContainer(
+                maxWidth: 900,
+                child: ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    ...config.systems.entries.map((entry) {
+                      return Card(
+                        elevation: 4,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 12,
+                          ),
+                          leading: Text(
+                            entry.value.icon,
+                            style: const TextStyle(fontSize: 32),
+                          ),
+                          title: Text(
+                            entry.value.name,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w600,
+                              color: themeProvider.isDarkMode
+                                  ? Colors.white
+                                  : Colors.black87,
+                            ),
+                          ),
+                          subtitle: Text(
+                            '${entry.value.submenus.length} подменю',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: themeProvider.isDarkMode
+                                  ? Colors.grey[400]
+                                  : Colors.grey,
+                            ),
+                          ),
+                          trailing: Icon(
+                            Icons.arrow_forward_ios,
+                            color: themeProvider.isDarkMode
+                                ? Colors.grey[400]
+                                : Colors.grey,
+                          ),
+                          onTap: () {
+                            Navigator.pushNamed(
+                              context,
+                              '/system',
+                              arguments: entry.key,
+                            );
+                          },
+                        ),
+                      );
+                    }),
+                    // Кнопка подключения
+                    Card(
                       elevation: 4,
                       margin: const EdgeInsets.only(bottom: 12),
                       shape: RoundedRectangleBorder(
@@ -484,11 +538,11 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                           vertical: 12,
                         ),
                         leading: Text(
-                          entry.value.icon,
+                          config.connection.icon,
                           style: const TextStyle(fontSize: 32),
                         ),
                         title: Text(
-                          entry.value.name,
+                          config.connection.name,
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w600,
@@ -498,12 +552,16 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                           ),
                         ),
                         subtitle: Text(
-                          '${entry.value.submenus.length} подменю',
+                          isCloud
+                              ? 'Подключено через Owen Cloud'
+                              : isRtu
+                              ? 'Подключено по USB'
+                              : isTcp
+                              ? 'Подключено по TCP'
+                              : 'Требуется подключение',
                           style: TextStyle(
                             fontSize: 12,
-                            color: themeProvider.isDarkMode
-                                ? Colors.grey[400]
-                                : Colors.grey,
+                            color: isConnected ? Colors.green : Colors.orange,
                           ),
                         ),
                         trailing: Icon(
@@ -513,309 +571,272 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                               : Colors.grey,
                         ),
                         onTap: () {
-                          Navigator.pushNamed(
-                            context,
-                            '/system',
-                            arguments: entry.key,
-                          );
+                          Navigator.pushNamed(context, '/connection');
                         },
                       ),
-                    );
-                  }),
-                  // Кнопка подключения
-                  Card(
-                    elevation: 4,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 12,
+                    // Кнопка "Настройки PIN-кода"
+                    Card(
+                      elevation: 4,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      leading: Text(
-                        config.connection.icon,
-                        style: const TextStyle(fontSize: 32),
-                      ),
-                      title: Text(
-                        config.connection.name,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                        leading: const Text(
+                          '🔐',
+                          style: TextStyle(fontSize: 32),
+                        ),
+                        title: Text(
+                          'Настройки PIN-кода',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: themeProvider.isDarkMode
+                                ? Colors.white
+                                : Colors.black87,
+                          ),
+                        ),
+                        subtitle: const Text(
+                          'Установить или отключить PIN-код',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        trailing: Icon(
+                          Icons.arrow_forward_ios,
                           color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.black87,
+                              ? Colors.grey[400]
+                              : Colors.grey,
                         ),
-                      ),
-                      subtitle: Text(
-                        isCloud
-                            ? 'Подключено через Owen Cloud'
-                            : isRtu
-                            ? 'Подключено по USB'
-                            : isTcp
-                            ? 'Подключено по TCP'
-                            : 'Требуется подключение',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isConnected ? Colors.green : Colors.orange,
-                        ),
-                      ),
-                      trailing: Icon(
-                        Icons.arrow_forward_ios,
-                        color: themeProvider.isDarkMode
-                            ? Colors.grey[400]
-                            : Colors.grey,
-                      ),
-                      onTap: () {
-                        Navigator.pushNamed(context, '/connection');
-                      },
-                    ),
-                  ),
-                  // Кнопка "Настройки PIN-кода"
-                  Card(
-                    elevation: 4,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 12,
-                      ),
-                      leading: const Text('🔐', style: TextStyle(fontSize: 32)),
-                      title: Text(
-                        'Настройки PIN-кода',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.black87,
-                        ),
-                      ),
-                      subtitle: const Text(
-                        'Установить или отключить PIN-код',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                      trailing: Icon(
-                        Icons.arrow_forward_ios,
-                        color: themeProvider.isDarkMode
-                            ? Colors.grey[400]
-                            : Colors.grey,
-                      ),
-                      onTap: () async {
-                        final pinService = PinService();
-                        final messenger = ScaffoldMessenger.maybeOf(context);
-                        final isSet = await pinService.isPinSet();
-
-                        if (!mounted) return;
-
-                        if (isSet) {
-                          // Если PIN установлен - предлагаем удалить
-                          final confirm = await showDialog<bool>(
-                            context: context,
-                            builder: (context) => AlertDialog(
-                              title: const Text('Удалить PIN-код?'),
-                              content: const Text(
-                                'Вы уверены, что хотите отключить PIN-код?',
-                              ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () =>
-                                      Navigator.pop(context, false),
-                                  child: const Text('Отмена'),
-                                ),
-                                TextButton(
-                                  onPressed: () => Navigator.pop(context, true),
-                                  child: const Text(
-                                    'Удалить',
-                                    style: TextStyle(color: Colors.red),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
+                        onTap: () async {
+                          final pinService = PinService();
+                          final messenger = ScaffoldMessenger.maybeOf(context);
+                          final isSet = await pinService.isPinSet();
 
                           if (!mounted) return;
 
-                          if (confirm == true) {
-                            await pinService.removePin();
+                          if (isSet) {
+                            // Если PIN установлен - предлагаем удалить
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: const Text('Удалить PIN-код?'),
+                                content: const Text(
+                                  'Вы уверены, что хотите отключить PIN-код?',
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: const Text('Отмена'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    child: const Text(
+                                      'Удалить',
+                                      style: TextStyle(color: Colors.red),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+
                             if (!mounted) return;
-                            messenger?.showSnackBar(
-                              const SnackBar(
-                                content: Text('🔓 PIN-код удален'),
-                                backgroundColor: Colors.green,
+
+                            if (confirm == true) {
+                              await pinService.removePin();
+                              if (!mounted) return;
+                              messenger?.showSnackBar(
+                                const SnackBar(
+                                  content: Text('🔓 PIN-код удален'),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          } else {
+                            // Если PIN не установлен - переходим к установке
+                            if (!mounted) return;
+                            final navigator = Navigator.of(context);
+                            await navigator.push(
+                              MaterialPageRoute(
+                                builder: (context) => PinScreen(
+                                  onSuccess: () {
+                                    if (!Navigator.of(context).mounted) return;
+                                    Navigator.of(context).pop();
+                                    ScaffoldMessenger.maybeOf(
+                                      context,
+                                    )?.showSnackBar(
+                                      const SnackBar(
+                                        content: Text('🔐 PIN-код установлен'),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                  },
+                                  isSettingPin: true,
+                                ),
                               ),
                             );
                           }
-                        } else {
-                          // Если PIN не установлен - переходим к установке
-                          if (!mounted) return;
-                          final navigator = Navigator.of(context);
-                          await navigator.push(
-                            MaterialPageRoute(
-                              builder: (context) => PinScreen(
-                                onSuccess: () {
-                                  if (!Navigator.of(context).mounted) return;
-                                  Navigator.of(context).pop();
-                                  ScaffoldMessenger.maybeOf(
-                                    context,
-                                  )?.showSnackBar(
-                                    const SnackBar(
-                                      content: Text('🔐 PIN-код установлен'),
-                                      backgroundColor: Colors.green,
-                                    ),
-                                  );
-                                },
-                                isSettingPin: true,
-                              ),
-                            ),
-                          );
-                        }
-                      },
-                    ),
-                  ),
-                  // Кнопка "Создать отчет"
-                  Card(
-                    elevation: 4,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 12,
+                        },
                       ),
-                      leading: const Text('📄', style: TextStyle(fontSize: 32)),
-                      title: Text(
-                        'Создать отчет',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
+                    ),
+                    // Кнопка "Создать отчет"
+                    Card(
+                      elevation: 4,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                        leading: const Text(
+                          '📄',
+                          style: TextStyle(fontSize: 32),
+                        ),
+                        title: Text(
+                          'Создать отчет',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: themeProvider.isDarkMode
+                                ? Colors.white
+                                : Colors.black87,
+                          ),
+                        ),
+                        subtitle: Text(
+                          isConnected
+                              ? 'Экспорт в PDF'
+                              : 'Требуется подключение',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isConnected ? Colors.green : Colors.orange,
+                          ),
+                        ),
+                        trailing: Icon(
+                          Icons.picture_as_pdf,
                           color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.black87,
+                              ? Colors.grey[400]
+                              : Colors.red,
                         ),
+                        onTap: isConnected
+                            ? () => _createReport(context)
+                            : null,
                       ),
-                      subtitle: Text(
-                        isConnected ? 'Экспорт в PDF' : 'Требуется подключение',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isConnected ? Colors.green : Colors.orange,
+                    ),
+                    // Кнопка "Тренды"
+                    Card(
+                      elevation: 4,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
                         ),
-                      ),
-                      trailing: Icon(
-                        Icons.picture_as_pdf,
-                        color: themeProvider.isDarkMode
-                            ? Colors.grey[400]
-                            : Colors.red,
-                      ),
-                      onTap: isConnected ? () => _createReport(context) : null,
-                    ),
-                  ),
-                  // Кнопка "Тренды"
-                  Card(
-                    elevation: 4,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 12,
-                      ),
-                      leading: const Text('📊', style: TextStyle(fontSize: 32)),
-                      title: Text(
-                        'Тренды',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
+                        leading: const Text(
+                          '📊',
+                          style: TextStyle(fontSize: 32),
+                        ),
+                        title: Text(
+                          'Тренды',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: themeProvider.isDarkMode
+                                ? Colors.white
+                                : Colors.black87,
+                          ),
+                        ),
+                        subtitle: Text(
+                          isConnected
+                              ? 'Графики датчиков'
+                              : 'Требуется подключение',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isConnected ? Colors.green : Colors.orange,
+                          ),
+                        ),
+                        trailing: Icon(
+                          Icons.show_chart,
                           color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.black87,
+                              ? Colors.grey[400]
+                              : Colors.purple,
                         ),
+                        onTap: isConnected
+                            ? () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const TrendsScreen(),
+                                  ),
+                                );
+                              }
+                            : null,
                       ),
-                      subtitle: Text(
-                        isConnected
-                            ? 'Графики датчиков'
-                            : 'Требуется подключение',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isConnected ? Colors.green : Colors.orange,
+                    ),
+                    Card(
+                      elevation: 4,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
                         ),
-                      ),
-                      trailing: Icon(
-                        Icons.show_chart,
-                        color: themeProvider.isDarkMode
-                            ? Colors.grey[400]
-                            : Colors.purple,
-                      ),
-                      onTap: isConnected
-                          ? () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) => const TrendsScreen(),
-                                ),
-                              );
-                            }
-                          : null,
-                    ),
-                  ),
-                  Card(
-                    elevation: 4,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 12,
-                      ),
-                      leading: const Text('📜', style: TextStyle(fontSize: 32)),
-                      title: Text(
-                        'История',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
+                        leading: const Text(
+                          '📜',
+                          style: TextStyle(fontSize: 32),
+                        ),
+                        title: Text(
+                          'История',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: themeProvider.isDarkMode
+                                ? Colors.white
+                                : Colors.black87,
+                          ),
+                        ),
+                        subtitle: Text(
+                          isCloud
+                              ? 'Таблица из Owen Cloud'
+                              : 'Доступно только в Owen Cloud',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: isCloud ? Colors.green : Colors.orange,
+                          ),
+                        ),
+                        trailing: Icon(
+                          Icons.table_chart,
                           color: themeProvider.isDarkMode
-                              ? Colors.white
-                              : Colors.black87,
+                              ? Colors.grey[400]
+                              : Colors.teal,
                         ),
+                        onTap: isCloud
+                            ? () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const HistoryScreen(),
+                                  ),
+                                );
+                              }
+                            : null,
                       ),
-                      subtitle: Text(
-                        isCloud
-                            ? 'Таблица из Owen Cloud'
-                            : 'Доступно только в Owen Cloud',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isCloud ? Colors.green : Colors.orange,
-                        ),
-                      ),
-                      trailing: Icon(
-                        Icons.table_chart,
-                        color: themeProvider.isDarkMode
-                            ? Colors.grey[400]
-                            : Colors.teal,
-                      ),
-                      onTap: isCloud
-                          ? () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const HistoryScreen(),
-                                ),
-                              );
-                            }
-                          : null,
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ],
