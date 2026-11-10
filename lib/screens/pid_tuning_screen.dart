@@ -329,9 +329,11 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
 
     for (int i = 0; i < 5; i++) {
       await Future.delayed(const Duration(seconds: 1));
+      if (!mounted) return;
       final currentValue = await modbusManager.readParameterValue(
         _selectedSensor!,
       );
+      if (!mounted) return;
       if (currentValue == null) {
         _showError('Потеря связи с датчиком');
         return;
@@ -395,21 +397,57 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
       _curvePoints.clear();
     });
 
+    // ✅ ВОТ ЭТОТ БЛОК — заменяем целиком
     try {
+      // 1. Снимаем НАЧАЛЬНУЮ температуру ДО подачи команды
+      final initialTemp = await modbusManager.readParameterValue(
+        _selectedSensor!,
+      );
+      if (!mounted) return;
+      if (initialTemp == null) {
+        _showError('Не удалось прочитать начальную температуру');
+        setState(() => _isRunning = false);
+        return;
+      }
+      _initialTemperature = initialTemp is double
+          ? initialTemp
+          : (initialTemp as num).toDouble();
+      _temperatureHistory = _initialTemperature;
+      _stableCounter = 0;
+      _hasStartedRising = false;
+      _startTime = DateTime.now();
+      _riseStartTime = null;
+      _curvePoints.clear();
+      _curvePoints.add(
+        TrendPoint(timestamp: _startTime!, value: _initialTemperature),
+      );
+
+      // 2. Переводим клапан в ручной режим
       final successMode = await modbusManager.setBit(
         modeItem.address,
         modeItem.bit ?? 0,
       );
       if (!mounted) return;
-
       if (!successMode) {
         _showError('Не удалось переключить клапан в ручной режим');
-        setState(() {
-          _isRunning = false;
-        });
+        setState(() => _isRunning = false);
         return;
       }
 
+      // 3. Запускаем таймер СРАЗУ — до подачи команды «открыть»
+      setState(() {
+        _statusMessage = '📊 Открытие и сбор данных...';
+      });
+      _timer?.cancel();
+      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        _collectData();
+      });
+
+      // 4. Подаём команду «открыть»
       if (_isAnalog) {
         final setpointItem = _findSetpointItem()!;
         final openingValue = _valveOpening.round();
@@ -420,14 +458,16 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
         );
         if (!mounted) return;
         if (!successSetpoint) {
+          _timer?.cancel();
+          _timer = null;
           _showError('Не удалось установить положение клапана');
           await modbusManager.clearBit(modeItem.address, modeItem.bit ?? 0);
-          setState(() {
-            _isRunning = false;
-          });
+          setState(() => _isRunning = false);
           return;
         }
-        LoggerService().log('✅ Клапан открыт на ${_valveOpening.round()}%');
+        LoggerService().log(
+          '✅ Клапан открыт на ${_valveOpening.round()}% (аналоговый)',
+        );
       } else {
         final openControl = _findOpenControl()!;
         final stopControl = _findStopControl()!;
@@ -439,73 +479,32 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
           openControl.value,
           type: openControl.type,
         );
+        if (!mounted) return;
         if (!successOpen) {
+          _timer?.cancel();
+          _timer = null;
           _showError('Не удалось подать сигнал "Открыть"');
           await modbusManager.clearBit(modeItem.address, modeItem.bit ?? 0);
-          setState(() {
-            _isRunning = false;
-          });
+          setState(() => _isRunning = false);
           return;
         }
 
-        setState(() {
-          _statusMessage = '⏳ Открытие клапана ($openTime сек)...';
-        });
+        LoggerService().log(
+          '📤 Сигнал "Открыть" подан, таймер запущен. Через $openTime сек — "Стоп"',
+        );
 
         await Future.delayed(Duration(seconds: openTime));
 
+        if (!mounted) return;
         await modbusManager.writeRegister(
           stopControl.address,
           stopControl.value,
           type: stopControl.type,
         );
         LoggerService().log(
-          '✅ Клапан открыт на ${_valveOpening.round()}% (время: $openTime сек)',
+          '✅ Клапан в позиции ${_valveOpening.round()}% (через $openTime сек)',
         );
       }
-
-      await Future.delayed(const Duration(seconds: 2));
-
-      if (!mounted) return;
-
-      final startTemp = await modbusManager.readParameterValue(
-        _selectedSensor!,
-      );
-      if (!mounted) return;
-      if (startTemp == null) {
-        _showError('Не удалось прочитать начальную температуру');
-        await _closeValve(modbusManager);
-        setState(() {
-          _isRunning = false;
-        });
-        return;
-      }
-
-      _initialTemperature = startTemp is double
-          ? startTemp
-          : (startTemp as num).toDouble();
-      _temperatureHistory = _initialTemperature;
-      _stableCounter = 0;
-      _hasStartedRising = false;
-      _startTime = DateTime.now();
-      _riseStartTime = null;
-
-      _curvePoints.add(
-        TrendPoint(timestamp: DateTime.now(), value: _initialTemperature),
-      );
-
-      setState(() {
-        _statusMessage = '📊 Сбор данных...';
-      });
-
-      if (!mounted) return;
-      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        if (!mounted) {
-          timer.cancel();
-          return;
-        }
-        _collectData();
-      });
 
       LoggerService().log('▶️ Тест ПИД-настройки запущен');
       LoggerService().log('   Начальная температура: $_initialTemperature°C');
@@ -514,12 +513,13 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
         '   Тип клапана: ${_isAnalog ? "Аналоговый" : "Трёхпозиционный"}',
       );
     } catch (e) {
+      _timer?.cancel();
+      _timer = null;
       _showError('❌ Ошибка запуска теста: $e');
       LoggerService().log('❌ Ошибка запуска теста: $e', level: LogLevel.error);
-      setState(() {
-        _isRunning = false;
-      });
+      setState(() => _isRunning = false);
     }
+    // ✅ КОНЕЦ блока замены
   }
 
   Future<void> _closeValve(ModbusManager modbusManager) async {
@@ -794,37 +794,76 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
 
     if (!mounted) return;
 
-    setState(() {
-      _statusMessage = '⏳ Закрытие клапана...';
-      _isRunning = false;
-    });
-
     final modbusManager = ModbusManager(context);
     final modeItem = _findModeItem();
 
-    try {
-      await _closeValve(modbusManager);
-      LoggerService().log('✅ Клапан закрыт');
+    if (_isAnalog) {
+      // ─── Аналоговый: сначала закрываем, потом результаты ───
+      setState(() {
+        _statusMessage = '⏳ Закрытие клапана...';
+        _isRunning = false;
+      });
 
-      await Future.delayed(const Duration(seconds: 2));
+      try {
+        await _closeValve(modbusManager);
+        LoggerService().log('✅ Клапан закрыт');
 
-      if (modeItem != null) {
-        await modbusManager.clearBit(modeItem.address, modeItem.bit ?? 0);
-        LoggerService().log('✅ Клапан переключен в АВТО-режим');
+        await Future.delayed(const Duration(seconds: 2));
+        if (!mounted) return;
+
+        if (modeItem != null) {
+          await modbusManager.clearBit(modeItem.address, modeItem.bit ?? 0);
+          LoggerService().log('✅ Клапан переключен в АВТО-режим');
+        }
+
+        _calculateResults();
+      } catch (e) {
+        LoggerService().log(
+          '❌ Ошибка остановки теста: $e',
+          level: LogLevel.error,
+        );
+        if (mounted) {
+          setState(() {
+            _statusMessage = '⚠️ Тест завершён с ошибкой';
+            _isRunning = false;
+            _isFinished = true;
+          });
+        }
       }
+    } else {
+      // ─── Трёхпозиционный: сразу АВТО → расчёт → результаты ───
+      // Клапан закроется сам, потому что в АВТО при выключенном контуре
+      // ПЛК всегда держит сигнал «Закрыть».
+      setState(() {
+        _statusMessage = '⏳ Перевод в АВТО...';
+        _isRunning = false;
+      });
 
-      _calculateResults();
-    } catch (e) {
-      LoggerService().log(
-        '❌ Ошибка остановки теста: $e',
-        level: LogLevel.error,
-      );
-      if (mounted) {
-        setState(() {
-          _statusMessage = '⚠️ Тест завершён с ошибкой';
-          _isRunning = false;
-          _isFinished = true;
-        });
+      try {
+        if (modeItem != null) {
+          await modbusManager.clearBit(modeItem.address, modeItem.bit ?? 0);
+          if (!mounted) return;
+          LoggerService().log('✅ Клапан переключен в АВТО-режим');
+        }
+
+        await Future.delayed(const Duration(seconds: 1));
+        if (!mounted) return;
+
+        _calculateResults();
+      } catch (e) {
+        LoggerService().log(
+          '❌ Ошибка перевода в АВТО: $e',
+          level: LogLevel.error,
+        );
+        if (mounted) {
+          // Даже если АВТО не удалось — покажем результаты,
+          // чтобы пользователь не потерял данные теста
+          _calculateResults();
+          _showError(
+            '⚠️ Не удалось перевести клапан в АВТО. '
+            'Проверьте вручную.',
+          );
+        }
       }
     }
   }
@@ -964,7 +1003,11 @@ class _PidTuningScreenState extends State<PidTuningScreen> {
     setState(() {
       _isRunning = false;
       _isFinished = true;
-      _statusMessage = '✅ Тест завершён!';
+      // Не трогаем _statusMessage — его установит
+      // _closeValveInBackground, когда клапан закроется
+      if (_isAnalog) {
+        _statusMessage = '✅ Тест завершён!';
+      }
     });
 
     final typeText = _controllerType == 'pi' ? 'ПИ' : 'ПИД';
