@@ -8,6 +8,11 @@ class SettingsWidget extends StatelessWidget {
   final Map<String, dynamic> settingsData;
   final VoidCallback onReloadSettings;
   final VoidCallback onSaveAllSettings;
+
+  // ✅ НОВЫЕ колбэки
+  final VoidCallback onSaveSnapshot;
+  final VoidCallback onLoadSnapshot;
+
   final Function(ItemConfig, dynamic) onParamChanged;
   final Function(ItemConfig, dynamic) onParamSave;
   final Future<dynamic> Function(ItemConfig) onParamLoad;
@@ -18,6 +23,8 @@ class SettingsWidget extends StatelessWidget {
     required this.settingsData,
     required this.onReloadSettings,
     required this.onSaveAllSettings,
+    required this.onSaveSnapshot,
+    required this.onLoadSnapshot,
     required this.onParamChanged,
     required this.onParamSave,
     required this.onParamLoad,
@@ -68,10 +75,47 @@ class SettingsWidget extends StatelessWidget {
               ),
             ],
           ),
+          // === НОВЫЙ Ряд 2: Память приложения (снимок / загрузить) ===
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onSaveSnapshot,
+                  icon: const Icon(Icons.bookmark_add_outlined),
+                  label: const Text('В память'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: isDark ? Colors.white : Colors.black87,
+                    side: BorderSide(
+                      color: isDark ? Colors.grey[600]! : Colors.grey[400]!,
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onLoadSnapshot,
+                  icon: const Icon(Icons.folder_open_outlined),
+                  label: const Text('Из памяти'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: isDark ? Colors.white : Colors.black87,
+                    side: BorderSide(
+                      color: isDark ? Colors.grey[600]! : Colors.grey[400]!,
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
           Text(
             'Измененные параметры подсвечиваются желтым. '
-            'Кнопка "Сохранить все" записывает все измененные параметры.',
+            'Кнопка "Сохранить все" записывает все измененные параметры.'
+            '«В память» / «Из памяти» — работа со снимками настроек '
+            'для переноса между объектами.',
             style: TextStyle(
               fontSize: 12,
               color: ThemeUtils.textSecondaryColor(context),

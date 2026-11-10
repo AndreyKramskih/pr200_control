@@ -14,6 +14,8 @@ import '../widgets/valve_widget.dart';
 import '../widgets/start_stop_widget.dart';
 import '../widgets/settings_widget.dart';
 import '../widgets/device_status_banner.dart';
+import '../services/settings_snapshot_service.dart';
+import '../widgets/settings_snapshot_dialog.dart';
 
 class SubmenuScreen extends StatefulWidget {
   final String systemId;
@@ -612,6 +614,78 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
   }
 
   // ==================== СОХРАНЕНИЕ НАСТРОЕК ====================
+
+  Future<void> _saveSnapshot() async {
+    if (!mounted || !_active) return;
+
+    final config = Provider.of<ConfigModel>(context, listen: false);
+    final system = config.getSystem(widget.systemId);
+    if (system == null) return;
+    final submenu = system.submenus[widget.submenuId];
+    if (submenu == null || submenu.groups == null) return;
+
+    // Собираем все значения из текущего _settingsData
+    // Только те адреса, что есть в конфиге
+    final values = <String, dynamic>{};
+    for (final group in submenu.groups!) {
+      for (final item in group.items) {
+        final key = item.address.toString();
+        if (_settingsData.containsKey(key)) {
+          values[key] = _settingsData[key];
+        }
+      }
+    }
+
+    if (values.isEmpty) {
+      _showError('Нет данных для сохранения');
+      return;
+    }
+
+    final name = await showSaveSnapshotDialog(
+      context,
+      projectName: config.projectName,
+    );
+    if (name == null || !mounted) return;
+
+    try {
+      await SettingsSnapshotService.saveSnapshot(
+        projectName: config.projectName,
+        systemId: widget.systemId,
+        submenuId: widget.submenuId,
+        values: values,
+        snapshotName: name,
+      );
+      if (mounted) {
+        _showSuccess('Снимок «$name» сохранён (${values.length} параметров)');
+      }
+    } catch (e) {
+      if (mounted) _showError('Ошибка сохранения снимка: $e');
+    }
+  }
+
+  Future<void> _loadSnapshot() async {
+    if (!mounted || !_active) return;
+
+    final entry = await showLoadSnapshotDialog(context);
+    if (entry == null || !mounted) return;
+
+    final values = entry.value;
+    if (values.isEmpty) {
+      _showError('Снимок пуст');
+      return;
+    }
+
+    setState(() {
+      for (final e in values.entries) {
+        _settingsData[e.key] = e.value;
+      }
+    });
+
+    _showSuccess(
+      'Загружено «${entry.key}»: ${values.length} параметров. '
+      'Теперь нажмите «Сохранить в ПЛК».',
+    );
+  }
 
   Future<void> _saveAllSettings() async {
     await _performWrite(() async {
@@ -1304,6 +1378,8 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
           settingsData: _settingsData,
           onReloadSettings: _reloadSettings,
           onSaveAllSettings: _saveAllSettings,
+          onSaveSnapshot: _saveSnapshot,
+          onLoadSnapshot: _loadSnapshot,
           onParamChanged: _onParamChanged,
           onParamSave: _onParamSave,
           onParamLoad: _onParamLoad,
