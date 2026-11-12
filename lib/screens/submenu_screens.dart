@@ -998,6 +998,11 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
     if (confirm != true || !mounted || !_active) return;
 
+    // ✅ Останавливаем автообновление на время сброса,
+    //    чтобы не превысить лимит Owen Cloud (10 запросов / 10 сек)
+    _updateTimer?.cancel();
+    _updateTimer = null;
+
     setState(() {
       _isResettingAlarms = true;
       _isLoading = true;
@@ -1028,11 +1033,20 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
       if (success) {
         if (config.connectionType == 'cloud') {
-          await Future.delayed(const Duration(seconds: 5));
-          if (!mounted || !_active) return;
+          // Облако обновляет данные не мгновенно — опрашиваем до 15 секунд
+          const maxTries = 5;
+          for (var i = 0; i < maxTries; i++) {
+            await Future.delayed(const Duration(seconds: 3));
+            if (!mounted || !_active) return;
+            await _loadRealtimeData(submenu);
+            if (!_active) return;
+            if (_alarms.isEmpty) break; // сброс удался — выходим сразу
+          }
+        } else {
+          // TCP / RTU: ответ приходит сразу
+          await _loadRealtimeData(submenu);
+          if (!_active) return;
         }
-        await _loadRealtimeData(submenu);
-        if (!_active) return;
 
         if (mounted && _active) {
           if (_alarms.isEmpty) {
@@ -1040,24 +1054,33 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
           } else {
             _showWarning(
               '⚠️ Остались активные аварии: ${_alarms.map((a) => a.name).join(", ")}\n'
-              'Устраните причину и повторите сброс.',
+              'Устраните причину и повторите сброс.${_cloudDelayHint()}',
             );
           }
         }
       } else {
         if (mounted && _active) {
-          _showError('Ошибка сброса аварий: ${modbusManager.lastError}');
+          _showError(
+            'Ошибка сброса аварий: ${modbusManager.lastError}${_cloudDelayHint()}',
+          );
         }
       }
     } catch (e) {
       LoggerService().log('❌ Ошибка сброса аварий: $e', level: LogLevel.error);
-      if (mounted && _active) _showError('Ошибка сброса аварий: $e');
+      if (mounted && _active)
+        _showError('Ошибка сброса аварий: $e${_cloudDelayHint()}');
     } finally {
       if (mounted && _active) {
         setState(() {
           _isResettingAlarms = false;
           _isLoading = false;
         });
+
+        // ✅ Возобновляем автообновление (только для realtime-экранов)
+        if (_isRealtimeType) {
+          _startAutoUpdate();
+        }
+
         // ✅ Уведомляем глобальный монитор, что аварии обновились
         try {
           Provider.of<AlarmMonitor>(context, listen: false).forceRefresh();
@@ -1242,11 +1265,12 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
   void _showError(String message) {
     if (mounted && _active) {
+      final hasHint = message.contains('Owen Cloud');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(message),
           backgroundColor: Colors.red,
-          duration: const Duration(seconds: 2),
+          duration: Duration(seconds: hasHint ? 5 : 2),
         ),
       );
     }
@@ -1254,11 +1278,12 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
 
   void _showWarning(String message) {
     if (mounted && _active) {
+      final hasHint = message.contains('Owen Cloud');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(message),
           backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 4),
+          duration: Duration(seconds: hasHint ? 5 : 2),
         ),
       );
     }
