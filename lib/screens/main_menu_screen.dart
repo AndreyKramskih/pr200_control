@@ -19,6 +19,7 @@ import '../services/modbus_manager.dart';
 import '../screens/history_screen.dart';
 import '../services/logger_service.dart';
 import 'materials_screen.dart';
+import '../services/alarm_monitor.dart';
 
 class MainMenuScreen extends StatefulWidget {
   const MainMenuScreen({super.key});
@@ -206,6 +207,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
   @override
   Widget build(BuildContext context) {
     final config = Provider.of<ConfigModel>(context);
+    final alarmMonitor = Provider.of<AlarmMonitor>(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
 
     // ✅ watch — автоматически перерисовывает экран при любом изменении сервисов
@@ -246,11 +248,56 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Text('PR200'),
+        //title: const Text('PR200'),
         backgroundColor: Colors.blue[800],
         foregroundColor: Colors.white,
         elevation: 4,
         actions: [
+          // Кнопка "О приложении"
+          IconButton(
+            icon: const Icon(Icons.info_outline),
+            tooltip: 'О приложении',
+            onPressed: () => _showAboutDialog(context),
+          ),
+          // Колокольчик аварий
+          IconButton(
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.notifications_outlined),
+                if (alarmMonitor.hasAnyAlarm)
+                  Positioned(
+                    right: -4,
+                    top: -4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1,
+                      ),
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 18,
+                        minHeight: 18,
+                      ),
+                      child: Text(
+                        '${alarmMonitor.totalCount}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            onPressed: () => _showAllAlarmsDialog(context),
+            tooltip: 'Активные аварии',
+          ),
           // Версия (долгое нажатие → Логи)
           GestureDetector(
             onLongPress: () {
@@ -267,7 +314,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Text(
-                'v1.0.12',
+                'v1.0.13',
                 style: TextStyle(
                   color: Colors.white70,
                   fontSize: 13,
@@ -459,7 +506,7 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
               child: Text(
                 'Выберите систему управления',
                 style: TextStyle(
-                  fontSize: 22,
+                  fontSize: 20,
                   fontWeight: FontWeight.bold,
                   color: themeProvider.isDarkMode
                       ? Colors.white
@@ -473,11 +520,18 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                 padding: const EdgeInsets.all(16),
                 children: [
                   ...config.systems.entries.map((entry) {
+                    final systemId = entry.key;
+                    final alarmCount = alarmMonitor.alarmsFor(systemId).length;
+                    final hasAlarm = alarmCount > 0;
+
                     return Card(
                       elevation: 4,
                       margin: const EdgeInsets.only(bottom: 12),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
+                        side: hasAlarm
+                            ? const BorderSide(color: Colors.red, width: 2)
+                            : BorderSide.none,
                       ),
                       child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(
@@ -498,26 +552,59 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
                                 : Colors.black87,
                           ),
                         ),
-                        subtitle: Text(
-                          '${entry.value.submenus.length} подменю',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: themeProvider.isDarkMode
-                                ? Colors.grey[400]
-                                : Colors.grey,
-                          ),
-                        ),
-                        trailing: Icon(
-                          Icons.arrow_forward_ios,
-                          color: themeProvider.isDarkMode
-                              ? Colors.grey[400]
-                              : Colors.grey,
+                        subtitle: Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                '${entry.value.submenus.length} подменю',
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: themeProvider.isDarkMode
+                                      ? Colors.grey[400]
+                                      : Colors.grey,
+                                ),
+                              ),
+                            ),
+                            if (hasAlarm) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 1,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.red,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.warning_amber_rounded,
+                                      color: Colors.white,
+                                      size: 10,
+                                    ),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      '$alarmCount',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                         onTap: () {
                           Navigator.pushNamed(
                             context,
                             '/system',
-                            arguments: entry.key,
+                            arguments: systemId,
                           );
                         },
                       ),
@@ -877,6 +964,271 @@ class _MainMenuScreenState extends State<MainMenuScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  void _showAboutDialog(BuildContext context) {
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
+    final config = Provider.of<ConfigModel>(context, listen: false);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        backgroundColor: themeProvider.isDarkMode
+            ? Colors.grey[850]
+            : Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        contentPadding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Иконка приложения
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.blue[800]!.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.developer_board,
+                size: 40,
+                color: Colors.blue[800],
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Название
+            Text(
+              'PR200 Control',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: themeProvider.isDarkMode
+                    ? Colors.white
+                    : Colors.blue[900],
+                letterSpacing: 0.3,
+              ),
+            ),
+            const SizedBox(height: 6),
+            // Подпись
+            Text(
+              'Мониторинг и управление ПР200',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: themeProvider.isDarkMode
+                    ? Colors.grey[400]
+                    : Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
+            // Версия
+            _buildAboutRow('Версия', 'v1.0.13', themeProvider.isDarkMode),
+            // Проект (если имя задано)
+            if (config.projectName.isNotEmpty)
+              _buildAboutRow(
+                'Проект',
+                config.projectName,
+                themeProvider.isDarkMode,
+              ),
+            // Канал связи
+            _buildAboutRow(
+              'Канал связи',
+              config.connectionType == 'cloud'
+                  ? 'Owen Cloud'
+                  : config.connectionType == 'rtu'
+                  ? 'USB (RTU)'
+                  : 'TCP/IP',
+              themeProvider.isDarkMode,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Закрыть'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAboutRow(String label, String value, bool isDark) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAllAlarmsDialog(BuildContext context) {
+    final alarmMonitor = Provider.of<AlarmMonitor>(context, listen: false);
+    final config = Provider.of<ConfigModel>(context, listen: false);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final systemsWithAlarms = config.systems.entries
+            .where((e) => alarmMonitor.systemHasAlarm(e.key))
+            .toList();
+
+        return AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 24,
+          ),
+          title: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.red,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  systemsWithAlarms.isEmpty
+                      ? 'Аварий нет'
+                      : 'Активные аварии (${alarmMonitor.totalCount})',
+                  style: const TextStyle(color: Colors.red, fontSize: 13),
+                  softWrap: true,
+                  overflow: TextOverflow.visible,
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: systemsWithAlarms.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Text(
+                      'Все системы работают нормально.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                  )
+                : ListView(
+                    shrinkWrap: true,
+                    children: systemsWithAlarms.map((entry) {
+                      final systemId = entry.key;
+                      final system = entry.value;
+                      final alarms = alarmMonitor.alarmsFor(systemId);
+
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 8),
+                          InkWell(
+                            onTap: () {
+                              Navigator.pop(ctx);
+                              Navigator.pushNamed(
+                                context,
+                                '/system',
+                                arguments: systemId,
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    system.icon,
+                                    style: const TextStyle(fontSize: 20),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      '${system.name} (${alarms.length})',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                  Icon(
+                                    Icons.arrow_forward_ios,
+                                    size: 14,
+                                    color: isDark
+                                        ? Colors.grey[400]
+                                        : Colors.grey,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          ...alarms.map(
+                            (alarm) => Padding(
+                              padding: const EdgeInsets.only(
+                                left: 28,
+                                top: 2,
+                                bottom: 2,
+                                right: 4,
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    '• ',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.red,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      alarm.name,
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.red,
+                                      ),
+                                      softWrap: true,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    }).toList(),
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Закрыть'),
+            ),
+          ],
+        );
+      },
     );
   }
 

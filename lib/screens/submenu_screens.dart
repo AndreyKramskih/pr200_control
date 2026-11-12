@@ -16,6 +16,7 @@ import '../widgets/settings_widget.dart';
 import '../widgets/device_status_banner.dart';
 import '../services/settings_snapshot_service.dart';
 import '../widgets/settings_snapshot_dialog.dart';
+import '../services/alarm_monitor.dart';
 
 class SubmenuScreen extends StatefulWidget {
   final String systemId;
@@ -1057,6 +1058,12 @@ class _SubmenuScreenState extends State<SubmenuScreen> {
           _isResettingAlarms = false;
           _isLoading = false;
         });
+        // ✅ Уведомляем глобальный монитор, что аварии обновились
+        try {
+          Provider.of<AlarmMonitor>(context, listen: false).forceRefresh();
+        } catch (_) {
+          // монитор не зарегистрирован (теоретически невозможно), игнорируем
+        }
       }
     }
   }

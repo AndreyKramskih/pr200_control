@@ -19,6 +19,7 @@ import 'screens/load_config_screen.dart';
 import 'screens/pin_screen.dart';
 import 'services/logger_service.dart';
 import 'services/owen_cloud_service.dart';
+import 'services/alarm_monitor.dart';
 
 void main() {
   runZonedGuarded(
@@ -361,6 +362,16 @@ class MyAppState extends State<MyApp> {
         ),
         ChangeNotifierProvider<ThemeProvider>.value(value: _themeProvider),
         ChangeNotifierProvider<OwenCloudService>.value(value: _cloudService),
+        ChangeNotifierProvider<AlarmMonitor>(
+          create: (ctx) {
+            final monitor = AlarmMonitor(ctx);
+            // Запускаем опрос раз в 30 секунд.
+            // (30 — компромисс: Cloud опрашивает ПЛК раз в 60 сек,
+            // но и локальные RTU/TCP быстрее реагируют.)
+            monitor.start(pollInterval: const Duration(seconds: 30));
+            return monitor;
+          },
+        ),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {
